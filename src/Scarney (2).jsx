@@ -39,6 +39,7 @@ function rcode() {
   for (let i = 0; i < 4; i++) r += ch[Math.floor(Math.random() * ch.length)];
   return r;
 }
+function deepCopy(obj) { return JSON.parse(JSON.stringify(obj)); }
 
 /* ═══════════════════════════════════════════
    HAND EVAL
@@ -110,7 +111,7 @@ function makeGame(players, ante, round) {
 }
 
 function doAdvancePhase(gs, players) {
-  const s = JSON.parse(JSON.stringify(gs));
+  const s = deepCopy(gs);
   const n = s.phase === "deal" ? 3 : s.phase === "flop" ? 2 : s.phase === "turn" ? 1 : 0;
   if (n === 0) return s;
 
@@ -149,7 +150,7 @@ function doAdvancePhase(gs, players) {
 }
 
 function doShowdown(gs, players) {
-  const s = JSON.parse(JSON.stringify(gs));
+  const s = deepCopy(gs);
   s.phase = "showdown";
   s.log.push("── ショーダウン ──");
   const topCards = (s.top || []).filter(Boolean);
@@ -212,7 +213,6 @@ export default function Scarney() {
   const [room, setRoomState] = useState(null);
   const [err, setErr] = useState("");
   const [ante, setAnte] = useState(50);
-  const [loading, setLoading] = useState(false);
   const unsubRef = useRef(null);
   const logRef = useRef(null);
 
@@ -220,26 +220,22 @@ export default function Scarney() {
   const gs = room ? room.gameState : null;
   const isSD = gs ? gs.phase === "showdown" : false;
 
-  // auto scroll log
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = 999999;
   });
 
-  // auto switch to game
   useEffect(() => {
     if (room && room.gameState && screen === "lobby") setScreen("game");
   }, [room, screen]);
 
-  // cleanup subscription on unmount
   useEffect(() => {
     return () => { if (unsubRef.current) unsubRef.current(); };
   }, []);
 
-  // Subscribe to room changes via Supabase Realtime
   const subscribe = useCallback((roomCode) => {
     if (unsubRef.current) unsubRef.current();
     unsubRef.current = subscribeRoom(roomCode, (data) => {
-      setRoomState(data);
+      setRoomState(deepCopy(data));
     });
   }, []);
 
@@ -253,7 +249,7 @@ export default function Scarney() {
       if (cancelled) return;
       if (d && d.players && d.players.find(p => p.id === sess.id)) {
         setCode(sess.room);
-        setRoomState(d);
+        setRoomState(deepCopy(d));
         setScreen(d.gameState ? "game" : "lobby");
         subscribe(sess.room);
       }
@@ -261,46 +257,53 @@ export default function Scarney() {
     return () => { cancelled = true; };
   }, [subscribe]);
 
-  // ─── ACTIONS ───
+  // ─── Helper: update local + remote ───
+  const updateRoom = useCallback(async (roomCode, newData, newScreen) => {
+    const copy = deepCopy(newData);
+    setRoomState(copy);
+    if (newScreen) setScreen(newScreen);
+    await setRoom(roomCode, copy);
+  }, []);
 
+  // ─── ACTIONS ───
   const onCreate = async () => {
     if (!name.trim()) { setErr("名前を入力"); return; }
-    setErr(""); setLoading(true);
+    setErr("");
     const c = rcode();
     const d = { code: c, players: [{ id: myId, name: name.trim() }], dealerId: myId, chips: { [myId]: 1000 }, gameState: null, ante };
-    await setRoom(c, d);
+    setCode(c);
     saveSession(myId, name.trim(), c);
-    setCode(c); setRoomState(d); setScreen("lobby"); setLoading(false);
+    await updateRoom(c, d, "lobby");
     subscribe(c);
   };
 
   const onJoin = async () => {
     if (!name.trim()) { setErr("名前を入力"); return; }
     if (!joinInput.trim()) { setErr("コードを入力"); return; }
-    setErr(""); setLoading(true);
+    setErr("");
     const c = joinInput.trim().toUpperCase();
     const d = await getRoom(c);
-    if (!d || !d.players) { setErr("ルーム見つかりません"); setLoading(false); return; }
-    if (d.gameState && d.gameState.phase !== "showdown" && !d.players.find(p => p.id === myId)) { setErr("ゲーム進行中"); setLoading(false); return; }
-    if (d.players.length >= 6 && !d.players.find(p => p.id === myId)) { setErr("満員"); setLoading(false); return; }
+    if (!d || !d.players) { setErr("ルーム見つかりません"); return; }
+    if (d.gameState && d.gameState.phase !== "showdown" && !d.players.find(p => p.id === myId)) { setErr("ゲーム進行中"); return; }
+    if (d.players.length >= 6 && !d.players.find(p => p.id === myId)) { setErr("満員"); return; }
     if (!d.players.find(p => p.id === myId)) {
       d.players.push({ id: myId, name: name.trim() });
       d.chips[myId] = 1000;
     }
-    await setRoom(c, d);
+    setCode(c);
+    setAnte(d.ante || 50);
     saveSession(myId, name.trim(), c);
-    setCode(c); setRoomState(d); setAnte(d.ante || 50); setScreen("lobby"); setLoading(false);
+    await updateRoom(c, d, "lobby");
     subscribe(c);
   };
 
   const onStart = async () => {
     if (!room || room.players.length < 2) return;
-    const d = JSON.parse(JSON.stringify(room));
+    const d = deepCopy(room);
     const a = d.ante || ante; d.ante = a;
     d.players.forEach(p => { d.chips[p.id] = (d.chips[p.id] || 1000) - a; });
     d.gameState = makeGame(d.players, a, 1);
-    await setRoom(code, d);
-    setRoomState(d); setScreen("game");
+    await updateRoom(code, d, "game");
   };
 
   const onAdvance = async () => {
@@ -310,36 +313,35 @@ export default function Scarney() {
       const act = room.players.filter(p => !g.down[p.id]);
       if (act.length <= 1) g = doShowdown(g, room.players);
     }
-    const d = { ...room, gameState: g };
-    await setRoom(code, d);
-    setRoomState(d);
+    const d = deepCopy(room);
+    d.gameState = g;
+    await updateRoom(code, d);
   };
 
   const onShowdownBtn = async () => {
     if (!room || !gs) return;
     const g = doShowdown(gs, room.players);
-    const d = { ...room, gameState: g };
-    await setRoom(code, d);
-    setRoomState(d);
+    const d = deepCopy(room);
+    d.gameState = g;
+    await updateRoom(code, d);
   };
 
   const onNextRound = async () => {
     if (!room || !gs || !gs.results) return;
-    const d = JSON.parse(JSON.stringify(room));
+    const d = deepCopy(room);
     const w = d.gameState.results.w;
     const a = d.ante || ante;
     d.players.forEach(p => { d.chips[p.id] = (d.chips[p.id] || 0) + ((w && w[p.id]) || 0) - a; });
     d.gameState = makeGame(d.players, a, (d.gameState.round || 1) + 1);
-    await setRoom(code, d);
-    setRoomState(d);
+    await updateRoom(code, d);
   };
 
   const onSetAnte = async (v) => {
     setAnte(v);
     if (room && isDealer) {
-      const d = { ...room, ante: v };
-      await setRoom(code, d);
-      setRoomState(d);
+      const d = deepCopy(room);
+      d.ante = v;
+      await updateRoom(code, d);
     }
   };
 
@@ -347,7 +349,7 @@ export default function Scarney() {
     try {
       if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
       if (room) {
-        const d = JSON.parse(JSON.stringify(room));
+        const d = deepCopy(room);
         d.players = d.players.filter(p => p.id !== myId);
         if (d.players.length === 0) await deleteRoom(code);
         else {
@@ -393,14 +395,14 @@ export default function Scarney() {
   };
 
   const btn = (text, onClick, color, dark, disabled, full) => (
-    <button onClick={onClick} disabled={disabled || loading} style={{
+    <button onClick={onClick} disabled={disabled} style={{
       padding: "10px 22px", borderRadius: 8, width: full ? "100%" : "auto",
       background: disabled ? "#333" : (color || "#444"), color: dark ? "#111" : "#fff",
       border: "none", cursor: disabled ? "default" : "pointer",
       fontWeight: 700, fontSize: 14, opacity: disabled ? 0.5 : 1,
       fontFamily: "inherit", letterSpacing: 0.5,
       transition: "all 0.15s",
-    }}>{loading ? "..." : text}</button>
+    }}>{text}</button>
   );
 
   const ctrStyle = {
