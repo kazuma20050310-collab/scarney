@@ -9,7 +9,8 @@ const RANKS = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
 const RV = {2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,J:11,Q:12,K:13,A:14};
 const LP = {2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,J:10,Q:10,K:10,A:1};
 const HN = ["ハイカード","ワンペア","ツーペア","スリーカード","ストレート","フラッシュ","フルハウス","フォーカード","ストレートフラッシュ","ロイヤルフラッシュ"];
-const STACKS = [500,1000,2000,5000];
+const STACKS = [5000,10000,20000,40000];
+const ANTE = 200;
 const PH_LIST = ["deal","flop","turn","river","showdown"];
 const PH_JP = {deal:"ディール",flop:"フロップ",turn:"ターン",river:"リバー",showdown:"ショーダウン"};
 
@@ -63,15 +64,25 @@ function startBetting(gs,ps,chips){
   return{currentBet:0,bets:{},acted:{},actorId:fid,minRaise:10};
 }
 
-function makeGame(ps,round,btn){
+function makeGame(ps,round,btn,chips){
   const deck=makeDeck();
   const hands={},disc={},down={},reason={},folded={};
-  ps.forEach(p=>{hands[p.id]=deck.splice(0,6);disc[p.id]=[];down[p.id]=false;reason[p.id]="";folded[p.id]=false;});
+  let pot=0;
+  const log=[];
+  ps.forEach(p=>{
+    hands[p.id]=deck.splice(0,6);disc[p.id]=[];down[p.id]=false;reason[p.id]="";folded[p.id]=false;
+    // Bomb pot ante
+    const ante=Math.min(ANTE,chips[p.id]||0);
+    chips[p.id]=(chips[p.id]||0)-ante;
+    pot+=ante;
+  });
+  log.push("R"+(round||1)+": ディール完了 — BTN: "+ps[btn||0].name);
+  log.push("💰 ボムポット: 全員 "+ANTE+" アンティ → POT "+pot);
   return{deck,hands,disc,down,reason,folded,
     top:Array(6).fill(null),bot:Array(6).fill(null),
-    phase:"deal",pot:0,round:round||1,btn:btn||0,
-    betting:null,results:null,
-    log:["R"+(round||1)+": ディール完了 — BTN: "+ps[btn||0].name]};
+    phase:"deal",pot,round:round||1,btn:btn||0,
+    betting:null,results:null,allInShow:false,
+    log};
 }
 
 function openCards(gs,ps){
@@ -107,7 +118,6 @@ function doAdvancePhase(gs,ps,chips){
   let s=openCards(gs,ps);
   const alive=aliveIds(s,ps);
   if(alive.length<=1)return doShowdown(s,ps);
-  // Try to start betting
   const bet=startBetting(s,ps,chips);
   if(bet){
     s.betting=bet;
@@ -115,13 +125,13 @@ function doAdvancePhase(gs,ps,chips){
     s.log.push("🎲 ベッティング開始 → "+an);
     return s;
   }
-  // All-in: skip betting, but DON'T auto-advance
-  // Dealer must click to go to next street
+  // All-in: skip betting, dealer clicks next
   if(s.phase==="river"){
     s.log.push("⚡ 全員オールイン → ショーダウン");
     return doShowdown(s,ps);
   }
-  s.log.push("⚡ 全員オールイン → ベッティングスキップ");
+  s.allInShow=true;
+  s.log.push("⚡ 全員オールイン → ハンド公開");
   return s;
 }
 
@@ -159,13 +169,22 @@ function doBetAction(gs,room,ps,pid,action,amount){
 
   const alive=aliveIds(s,ps);
   if(alive.length<=1){s.betting=null;return{gs:doShowdown(s,ps),room:r};}
+
+  // Check if all remaining are all-in after this action
+  if(allAliveAllIn(s,ps,chips)){
+    s.betting=null;
+    s.allInShow=true;
+    s.log.push("⚡ 全員オールイン → ハンド公開");
+    // Don't auto-advance, dealer clicks
+    return{gs:s,room:r};
+  }
+
   const ni=findNextActor(ps,pid,s);
   if(ni){s.betting.actorId=ni;return{gs:s,room:r};}
-  // Betting round over → auto-advance to next street
+  // Betting round over → auto-advance
   s.betting=null;
   s.log.push("ベッティング終了");
   if(s.phase==="river"){return{gs:doShowdown(s,ps),room:r};}
-  // Auto-advance
   const ng=doAdvancePhase(s,ps,chips);
   return{gs:ng,room:r};
 }
@@ -204,8 +223,8 @@ export default function Scarney(){
   const[ji,setJi]=useState("");
   const[room,setRS]=useState(null);
   const[err,setErr]=useState("");
-  const[stack,setStack]=useState(1000);
-  const[betAmt,setBetAmt]=useState(10);
+  const[stack,setStack]=useState(10000);
+  const[betAmt,setBetAmt]=useState(100);
   const unR=useRef(null);const logR=useRef(null);
 
   const isDlr=room?room.dealerId===myId:false;
@@ -214,11 +233,12 @@ export default function Scarney(){
   const isBetting=gs&&gs.betting;
   const isMyTurn=isBetting&&gs.betting.actorId===myId;
   const myChips=(room&&room.chips&&room.chips[myId])||0;
+  const showHands=gs&&gs.allInShow;
 
-  // Live hand evaluation
   const myH=(gs&&gs.hands&&gs.hands[myId])||[];
   const topCards=(gs?(gs.top||[]):[]).filter(Boolean);
   const liveEval=(!isSD&&myH.length>0&&topCards.length>0)?evalHand([...myH,...topCards]):null;
+  const myLow=myH.length>0?lowPts(myH):0;
 
   useEffect(()=>{if(logR.current)logR.current.scrollTop=1e6;});
   useEffect(()=>{if(room&&room.gameState&&scr==="lobby")setScr("game");},[room,scr]);
@@ -239,17 +259,20 @@ export default function Scarney(){
     if(!d||!d.players){setErr("ルーム見つかりません");return;}
     if(d.gameState&&d.gameState.phase!=="showdown"&&!d.players.find(p=>p.id===myId)){setErr("ゲーム進行中");return;}
     if(d.players.length>=6&&!d.players.find(p=>p.id===myId)){setErr("満員");return;}
-    if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=d.stack||1000;}
-    setCode(c);setStack(d.stack||1000);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);
+    if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=d.stack||10000;}
+    setCode(c);setStack(d.stack||10000);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);
   };
   const onStart=async()=>{
     if(!room||room.players.length<2)return;
-    const d=dc(room);d.gameState=makeGame(d.players,1,0);await upd(code,d,"game");
+    const d=dc(room);
+    d.gameState=makeGame(d.players,1,0,d.chips);
+    await upd(code,d,"game");
   };
   const onAdvance=async()=>{
     if(!room||!gs||isBetting)return;
-    const g=doAdvancePhase(gs,room.players,room.chips);
-    const d=dc(room);d.gameState=g;await upd(code,d);
+    const d=dc(room);
+    const g=doAdvancePhase(gs,room.players,d.chips);
+    d.gameState=g;await upd(code,d);
   };
   const onBetAct=async(action,amount)=>{
     if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;
@@ -259,17 +282,15 @@ export default function Scarney(){
   const onNext=async()=>{
     if(!room||!gs||!gs.results)return;
     const d=dc(room);const w=d.gameState.results.w;
-    // Add winnings to existing chips (don't reset!)
     d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});
     const nb=((d.gameState.btn||0)+1)%d.players.length;
-    d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb);
+    d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);
     await upd(code,d);
   };
   const onRebuy=async()=>{
     if(!room)return;
     const d=dc(room);
-    d.chips[myId]=(d.chips[myId]||0)+(d.stack||1000);
-    d.log_rebuy=[...(d.log_rebuy||[]),{id:myId,name:name,round:(gs&&gs.round)||"?"}];
+    d.chips[myId]=(d.chips[myId]||0)+(d.stack||10000);
     await upd(code,d);
   };
   const onSetStack=async v=>{setStack(v);if(room&&isDlr){const d=dc(room);d.stack=v;d.players.forEach(p=>d.chips[p.id]=v);await upd(code,d);}};
@@ -304,7 +325,7 @@ export default function Scarney(){
     <div style={{height:10}}/>
     <div style={{fontSize:11,color:"#8aaa8e",marginBottom:3,fontWeight:600}}>スタック</div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14}}>
-      {STACKS.map(v=><button key={v} onClick={()=>setStack(v)} style={{padding:"5px 12px",borderRadius:6,fontSize:13,fontWeight:700,fontFamily:"inherit",background:stack===v?"#d4af37":"rgba(255,255,255,0.06)",color:stack===v?"#111":"#aaa",border:stack===v?"2px solid #d4af37":"2px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>{v}</button>)}
+      {STACKS.map(v=><button key={v} onClick={()=>setStack(v)} style={{padding:"5px 12px",borderRadius:6,fontSize:13,fontWeight:700,fontFamily:"inherit",background:stack===v?"#d4af37":"rgba(255,255,255,0.06)",color:stack===v?"#111":"#aaa",border:stack===v?"2px solid #d4af37":"2px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>{v.toLocaleString()}</button>)}
     </div>
     {abtn("ルームを作成",onCreate,"#2a7a42",false,false,true)}
     <div style={{display:"flex",alignItems:"center",gap:10,margin:"14px 0"}}><div style={{flex:1,height:1,background:"rgba(255,255,255,0.08)"}}/><span style={{color:"#444",fontSize:11}}>or</span><div style={{flex:1,height:1,background:"rgba(255,255,255,0.08)"}}/></div>
@@ -315,9 +336,10 @@ export default function Scarney(){
     {err&&<div style={{marginTop:10,padding:"7px 10px",borderRadius:6,background:"rgba(180,40,40,0.1)",border:"1px solid rgba(180,40,40,0.2)",color:"#e74c3c",fontSize:12,textAlign:"center"}}>{err}</div>}
     <div style={{marginTop:18,padding:10,borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)",fontSize:10,color:"#5a7a5e",lineHeight:1.8}}>
       <strong style={{color:"#7a9a7e"}}>📖 ルール</strong><br/>
+      ボムポット: ディール時に全員{ANTE}アンティ。<br/>
       各ストリートで下段と同じ数字の手札を強制ディスカード。<br/>
       <span style={{color:"#e74c3c"}}>💀 リバー時点で手札 0枚 or 6枚 → バースト。</span><br/>
-      フロップ/ターン/リバーでベッティング。手札＋上段で最強役=ハイ、手札の点数合計最小=ロー。ポット折半。
+      フロップ/ターン/リバーでベッティング。ハイ（最強役）＋ロー（最小ポイント）でポット折半。
     </div>
   </div></div>;
 
@@ -332,9 +354,9 @@ export default function Scarney(){
         <div style={{fontSize:10,color:"#555"}}>友達にシェア！</div>
       </div>
       <div style={{textAlign:"center",margin:"10px 0",padding:"8px 12px",borderRadius:8,background:"rgba(212,175,55,0.08)",border:"1px solid rgba(212,175,55,0.2)"}}>
-        <div style={{fontSize:11,color:"#d4af37",fontWeight:600,marginBottom:5}}>🪙 スタック: {cs}</div>
+        <div style={{fontSize:11,color:"#d4af37",fontWeight:600,marginBottom:5}}>🪙 スタック: {cs.toLocaleString()}</div>
         {isDlr&&<div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
-          {STACKS.map(v=><button key={v} onClick={()=>onSetStack(v)} style={{padding:"3px 10px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"inherit",background:cs===v?"#d4af37":"rgba(255,255,255,0.05)",color:cs===v?"#111":"#777",border:cs===v?"2px solid #d4af37":"2px solid rgba(255,255,255,0.06)",cursor:"pointer"}}>{v}</button>)}
+          {STACKS.map(v=><button key={v} onClick={()=>onSetStack(v)} style={{padding:"3px 10px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"inherit",background:cs===v?"#d4af37":"rgba(255,255,255,0.05)",color:cs===v?"#111":"#777",border:cs===v?"2px solid #d4af37":"2px solid rgba(255,255,255,0.06)",cursor:"pointer"}}>{v.toLocaleString()}</button>)}
         </div>}
       </div>
       <div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:12,border:"1px solid rgba(255,255,255,0.05)",marginBottom:12}}>
@@ -362,9 +384,10 @@ export default function Scarney(){
   const actorName=isBetting?(players.find(p=>p.id===gs.betting.actorId)||{}).name||"?":"";
   const myBetIn=isBetting?(gs.betting.bets[myId]||0):0;
   const toCall=isBetting?Math.max(0,gs.betting.currentBet-myBetIn):0;
-  const minRaise=isBetting?(gs.betting.currentBet===0?10:gs.betting.currentBet+(gs.betting.minRaise||10)):10;
+  const minRaise=isBetting?(gs.betting.currentBet===0?100:gs.betting.currentBet+(gs.betting.minRaise||100)):100;
   const maxBet=myChips+myBetIn;
-  const needRebuy=myChips===0&&isSD;
+  // Rebuy: show when it's deal phase and stack is 0
+  const needRebuy=myChips===0&&gs.phase==="deal";
 
   return<div style={CS}>
     {/* Header + Stack */}
@@ -375,14 +398,14 @@ export default function Scarney(){
       </div>
       <div style={{background:myChips===0?"linear-gradient(135deg,rgba(231,76,60,0.2),rgba(231,76,60,0.05))":"linear-gradient(135deg,rgba(144,238,144,0.15),rgba(144,238,144,0.05))",border:myChips===0?"1px solid rgba(231,76,60,0.4)":"1px solid rgba(144,238,144,0.3)",borderRadius:10,padding:"6px 14px",textAlign:"center"}}>
         <div style={{fontSize:8,color:myChips===0?"#e74c3c":"#6aaa6e",fontWeight:600,letterSpacing:1}}>MY STACK</div>
-        <div style={{fontSize:22,fontWeight:900,color:myChips===0?"#e74c3c":"#90ee90",fontFamily:"Georgia,serif"}}>{myChips}</div>
+        <div style={{fontSize:22,fontWeight:900,color:myChips===0?"#e74c3c":"#90ee90",fontFamily:"Georgia,serif"}}>{myChips.toLocaleString()}</div>
       </div>
     </div>
 
     {/* POT */}
     <div style={{textAlign:"center",padding:"6px 0",marginBottom:5,background:"radial-gradient(ellipse at center,rgba(212,175,55,0.1) 0%,transparent 70%)",borderRadius:10}}>
       <div style={{fontSize:9,color:"#b8962e",fontWeight:600,letterSpacing:1}}>POT</div>
-      <div style={{fontSize:26,fontWeight:900,color:"#f0d060",fontFamily:"Georgia,serif",textShadow:"0 0 16px rgba(212,175,55,0.25)"}}>{gs.pot}</div>
+      <div style={{fontSize:26,fontWeight:900,color:"#f0d060",fontFamily:"Georgia,serif",textShadow:"0 0 16px rgba(212,175,55,0.25)"}}>{gs.pot.toLocaleString()}</div>
     </div>
 
     {/* Phase */}
@@ -396,7 +419,12 @@ export default function Scarney(){
     {/* Betting indicator */}
     {isBetting&&<div style={{textAlign:"center",padding:"5px 8px",marginBottom:5,borderRadius:8,background:isMyTurn?"rgba(255,215,0,0.1)":"rgba(255,255,255,0.03)",border:isMyTurn?"1px solid rgba(255,215,0,0.3)":"1px solid rgba(255,255,255,0.05)",fontSize:11}}>
       {isMyTurn?<span style={{color:"#ffd700",fontWeight:700}}>🎲 あなたのターン！</span>:<span style={{color:"#999"}}>⏳ {actorName} のアクション待ち…</span>}
-      {gs.betting.currentBet>0&&<span style={{color:"#d4af37",marginLeft:8,fontSize:10}}>現在ベット: {gs.betting.currentBet}</span>}
+      {gs.betting.currentBet>0&&<span style={{color:"#d4af37",marginLeft:8,fontSize:10}}>現在ベット: {gs.betting.currentBet.toLocaleString()}</span>}
+    </div>}
+
+    {/* All-in show indicator */}
+    {showHands&&!isSD&&<div style={{textAlign:"center",padding:"5px 8px",marginBottom:5,borderRadius:8,background:"rgba(100,180,255,0.08)",border:"1px solid rgba(100,180,255,0.2)",fontSize:11,color:"#64b4ff",fontWeight:700}}>
+      ⚡ 全員オールイン — ハンド公開中
     </div>}
 
     {/* Others */}
@@ -410,19 +438,31 @@ export default function Scarney(){
         const pBet=isBetting?(gs.betting.bets[p.id]||0):0;
         const isBtn2=gs.btn===players.indexOf(p);
         const pChips=(room.chips&&room.chips[p.id])||0;
+        const canSee=isSD||showHands;
+        const pLow=hd.length>0?lowPts(hd):0;
+        // Live eval for opponent (when visible)
+        const pEval=canSee&&hd.length>0&&topCards.length>0?evalHand([...hd,...topCards]):null;
         return<div key={p.id} style={{flex:1,minWidth:110,background:fd?"rgba(100,100,100,0.06)":dn?"rgba(180,40,40,0.06)":isActor?"rgba(255,215,0,0.05)":"rgba(255,255,255,0.02)",borderRadius:8,padding:"4px 5px",border:isActor?"1px solid rgba(255,215,0,0.3)":dn?"1px solid rgba(180,40,40,0.15)":"1px solid rgba(255,255,255,0.04)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
             <span style={{fontSize:9,fontWeight:700}}>{isBtn2?"🔘":""}{p.name}{dn?"💀":fd?"✕":""}</span>
-            <span style={{fontSize:10,fontWeight:700,color:pChips===0?"#e74c3c":"#90ee90"}}>🪙{pChips}</span>
+            <span style={{fontSize:10,fontWeight:700,color:pChips===0?"#e74c3c":"#90ee90"}}>🪙{pChips.toLocaleString()}</span>
           </div>
-          {pBet>0&&<div style={{fontSize:8,color:"#d4af37",marginBottom:2}}>ベット: {pBet}</div>}
+          {pBet>0&&<div style={{fontSize:8,color:"#d4af37",marginBottom:2}}>ベット: {pBet.toLocaleString()}</div>}
           <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
             {fd?<div style={{fontSize:9,color:"#666",padding:"8px 0"}}>フォールド</div>
-            :isSD?hd.map((c,i)=><span key={i}>{crd(c,{small:true,dim:dn})}</span>)
+            :canSee?hd.map((c,i)=><span key={i}>{crd(c,{small:true,dim:dn})}</span>)
             :Array(hd.length).fill(null).map((_,i)=><span key={i}>{crd(null,{faceDown:true,small:true,dim:dn})}</span>)}
-            {isSD&&!fd&&dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,small:true})}</span>)}
+            {canSee&&!fd&&dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,small:true})}</span>)}
           </div>
-          {isSD&&hiR&&!dn&&!fd&&<div style={{marginTop:2,fontSize:8,color:"#bbb"}}>{hiR.name}{wn>0&&<strong style={{color:"#ffd700",marginLeft:3}}>+{wn}</strong>}</div>}
+          {/* Show eval + low pts when hands visible */}
+          {canSee&&!fd&&!dn&&pEval&&pEval.rank>=0&&<div style={{marginTop:2,fontSize:8,color:"#bbb"}}>
+            {pEval.name} ・ <span style={{color:"#64b4ff"}}>{pLow}pt</span>
+            {wn>0&&<strong style={{color:"#ffd700",marginLeft:3}}>+{wn.toLocaleString()}</strong>}
+          </div>}
+          {canSee&&!fd&&!dn&&(!pEval||pEval.rank<0)&&hd.length>0&&<div style={{marginTop:2,fontSize:8,color:"#bbb"}}>
+            <span style={{color:"#64b4ff"}}>{pLow}pt</span>
+            {wn>0&&<strong style={{color:"#ffd700",marginLeft:3}}>+{wn.toLocaleString()}</strong>}
+          </div>}
           {dn&&<div style={{fontSize:8,color:"#e74c3c",marginTop:1}}>💀{(gs.reason&&gs.reason[p.id])||""}</div>}
         </div>;
       })}
@@ -441,21 +481,20 @@ export default function Scarney(){
     <div style={{background:myDn?"rgba(180,40,40,0.06)":myFold?"rgba(100,100,100,0.06)":"rgba(255,255,255,0.03)",borderRadius:10,padding:8,marginBottom:6,border:myDn?"1px solid rgba(180,40,40,0.2)":isMyTurn?"2px solid rgba(255,215,0,0.4)":"1px solid rgba(212,175,55,0.18)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
         <span style={{fontSize:11,fontWeight:700}}>🃏 あなた（{myH.length}枚）{gs.btn===players.findIndex(p=>p.id===myId)?" 🔘BTN":""}{myDn?<span style={{color:"#e74c3c",fontSize:10,marginLeft:3}}>💀{(gs.reason&&gs.reason[myId])||""}</span>:myFold?<span style={{color:"#666",fontSize:10,marginLeft:3}}>フォールド</span>:""}</span>
-        {myH.length>0&&!myDn&&!myFold&&<span style={{fontSize:10,color:"#999"}}>Low: {lowPts(myH)}pt</span>}
+        {myH.length>0&&!myDn&&!myFold&&<span style={{fontSize:10,color:"#64b4ff",fontWeight:700}}>Low: {myLow}pt</span>}
       </div>
-      {isBetting&&(gs.betting.bets[myId]||0)>0&&<div style={{fontSize:9,color:"#d4af37",marginBottom:3}}>ベット中: {gs.betting.bets[myId]}</div>}
+      {isBetting&&(gs.betting.bets[myId]||0)>0&&<div style={{fontSize:9,color:"#d4af37",marginBottom:3}}>ベット中: {(gs.betting.bets[myId]||0).toLocaleString()}</div>}
       <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
         {myFold?<div style={{fontSize:11,color:"#666",padding:"10px 0"}}>フォールド済み</div>
         :<>{myH.map((c,i)=><span key={i}>{crd(c,{glow:isSD&&!myDn})}</span>)}{myDisc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true})}</span>)}</>}
       </div>
-      {/* Live hand evaluation */}
+      {/* Live hand evaluation + low */}
       {liveEval&&liveEval.rank>=0&&!myDn&&!myFold&&<div style={{marginTop:5,padding:"4px 10px",borderRadius:8,background:"linear-gradient(90deg,rgba(100,180,255,0.08),rgba(100,180,255,0.02))",border:"1px solid rgba(100,180,255,0.15)",fontSize:11}}>
         🃏 現在の役: <strong style={{color:"#64b4ff"}}>{liveEval.name}</strong>
       </div>}
-      {/* Showdown result */}
       {isSD&&gs.results&&!myDn&&!myFold&&<div style={{marginTop:4,padding:"3px 8px",borderRadius:6,fontSize:11,background:((gs.results.w&&gs.results.w[myId])||0)>0?"rgba(255,215,0,0.1)":"rgba(255,255,255,0.02)"}}>
-        🏆 <strong>{gs.results.hi&&gs.results.hi[myId]?gs.results.hi[myId].name:"?"}</strong> ・ Low: <strong>{gs.results.lw&&gs.results.lw[myId]===Infinity?"—":((gs.results.lw&&gs.results.lw[myId])||"?")+"pt"}</strong>
-        {((gs.results.w&&gs.results.w[myId])||0)>0&&<span style={{color:"#ffd700",marginLeft:6,fontWeight:700}}>+{gs.results.w[myId]}!</span>}
+        🏆 <strong>{gs.results.hi&&gs.results.hi[myId]?gs.results.hi[myId].name:"?"}</strong> ・ Low: <strong>{myLow}pt</strong>
+        {((gs.results.w&&gs.results.w[myId])||0)>0&&<span style={{color:"#ffd700",marginLeft:6,fontWeight:700}}>+{(gs.results.w[myId]||0).toLocaleString()}!</span>}
       </div>}
     </div>
 
@@ -468,8 +507,8 @@ export default function Scarney(){
         </div>
         <div style={{fontSize:10,color:"#aaa",marginBottom:4}}>ベット額:</div>
         <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
-          {[10,25,50,100,200].filter(v=>v<=myChips).map(v=><button key={v} onClick={()=>setBetAmt(v)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.06)",color:betAmt===v?"#111":"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>{v}</button>)}
-          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),10))} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>½Pot</button>}
+          {[100,200,500,1000,2000].filter(v=>v<=myChips).map(v=><button key={v} onClick={()=>setBetAmt(v)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.06)",color:betAmt===v?"#111":"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>{v.toLocaleString()}</button>)}
+          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),100))} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>½Pot</button>}
           <button onClick={()=>setBetAmt(myChips)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(200,50,50,0.2)",color:"#e74c3c",border:"1px solid rgba(200,50,50,0.3)",cursor:"pointer"}}>All-in</button>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -478,12 +517,12 @@ export default function Scarney(){
         </div>
       </>:<>
         <div style={{display:"flex",gap:6,marginBottom:8}}>
-          <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"10px",borderRadius:8,background:"#2a7a42",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>コール ({Math.min(toCall,myChips)})</button>
+          <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"10px",borderRadius:8,background:"#2a7a42",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>コール ({Math.min(toCall,myChips).toLocaleString()})</button>
           <button onClick={()=>onBetAct("fold")} style={{padding:"10px 16px",borderRadius:8,background:"#5a3333",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>フォールド</button>
         </div>
         <div style={{fontSize:10,color:"#aaa",marginBottom:4}}>レイズ額（トータル）:</div>
         <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
-          <button onClick={()=>setBetAmt(minRaise)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>Min({minRaise})</button>
+          <button onClick={()=>setBetAmt(minRaise)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>Min({minRaise.toLocaleString()})</button>
           {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),minRaise))} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>½Pot</button>}
           {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(gs.pot,minRaise))} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>Pot</button>}
           <button onClick={()=>setBetAmt(maxBet)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(200,50,50,0.2)",color:"#e74c3c",border:"1px solid rgba(200,50,50,0.3)",cursor:"pointer"}}>All-in</button>
@@ -495,10 +534,10 @@ export default function Scarney(){
       </>}
     </div>}
 
-    {/* Rebuy */}
+    {/* Rebuy - shown at deal phase when stack is 0 */}
     {needRebuy&&<div style={{background:"rgba(231,76,60,0.08)",border:"1px solid rgba(231,76,60,0.25)",borderRadius:10,padding:12,marginBottom:6,textAlign:"center"}}>
       <div style={{fontSize:13,color:"#e74c3c",fontWeight:700,marginBottom:6}}>💸 スタックがなくなりました</div>
-      <button onClick={onRebuy} style={{padding:"10px 30px",borderRadius:8,background:"#e74c3c",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>リバイ (+{room.stack||1000}) 🔄</button>
+      <button onClick={onRebuy} style={{padding:"10px 30px",borderRadius:8,background:"#e74c3c",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>リバイ (+{(room.stack||10000).toLocaleString()}) 🔄</button>
     </div>}
 
     {/* Dealer advance */}
@@ -514,7 +553,7 @@ export default function Scarney(){
 
     {/* Log */}
     <div ref={logR} style={{background:"rgba(0,0,0,0.25)",borderRadius:8,padding:6,maxHeight:120,overflowY:"auto",fontSize:9,lineHeight:1.7,border:"1px solid rgba(255,255,255,0.03)",color:"#7a9a7e",marginBottom:5}}>
-      {(gs.log||[]).map((l,i)=><div key={i} style={{color:l.includes("💀")?"#e74c3c":l.includes("🏆")?"#ffd700":l.startsWith("──")?"#d4af37":l.includes("🎲")?"#90ee90":l.includes("⚡")?"#64b4ff":l.includes("フォールド")?"#888":"#7a9a7e",fontWeight:l.startsWith("──")||l.includes("🏆")||l.includes("💀")||l.includes("🎲")||l.includes("⚡")?700:400}}>{l}</div>)}
+      {(gs.log||[]).map((l,i)=><div key={i} style={{color:l.includes("💀")?"#e74c3c":l.includes("🏆")?"#ffd700":l.startsWith("──")?"#d4af37":l.includes("🎲")?"#90ee90":l.includes("⚡")?"#64b4ff":l.includes("💰")?"#d4af37":l.includes("フォールド")?"#888":"#7a9a7e",fontWeight:l.startsWith("──")||l.includes("🏆")||l.includes("💀")||l.includes("🎲")||l.includes("⚡")||l.includes("💰")?700:400}}>{l}</div>)}
     </div>
     <div style={{textAlign:"center"}}><button onClick={onLeave} style={{background:"none",border:"none",color:"#553",fontSize:10,cursor:"pointer",textDecoration:"underline"}}>退出</button></div>
   </div>;
