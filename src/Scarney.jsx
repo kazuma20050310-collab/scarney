@@ -41,30 +41,23 @@ function eval5(cards){
   if(g[0].c===2)return{rank:1,name:HN[1],score:1e12+g[0].v*1e6};
   return{rank:0,name:HN[0],score:v[4]*1e8+v[3]*1e6+v[2]*1e4+v[1]*100+v[0]};
 }
-function evalHand(cards){if(!cards||cards.length<5)return{rank:-1,name:"不成立",score:-1};let b=null;for(const c of combos(cards,5)){const e=eval5(c);if(!b||e.score>b.score)b=e;}return b;}
+function evalHand(cards){if(!cards||cards.length<5)return{rank:-1,name:"—",score:-1};let b=null;for(const c of combos(cards,5)){const e=eval5(c);if(!b||e.score>b.score)b=e;}return b;}
 
 /* ═══════ GAME LOGIC ═══════ */
 function aliveIds(gs,ps){return ps.filter(p=>!gs.folded[p.id]&&!gs.down[p.id]).map(p=>p.id);}
+function findFirstActor(ps,btnIdx,gs){const n=ps.length;for(let i=1;i<=n;i++){const p=ps[(btnIdx+i)%n];if(!gs.folded[p.id]&&!gs.down[p.id])return p.id;}return null;}
+function findNextActor(ps,curId,gs){const ids=ps.map(p=>p.id);const ci=ids.indexOf(curId);const n=ids.length;for(let i=1;i<n;i++){const id=ids[(ci+i)%n];if(gs.folded[id]||gs.down[id])continue;if(!gs.betting.acted[id]||(gs.betting.bets[id]||0)<gs.betting.currentBet)return id;}return null;}
 
-function findFirstActor(ps,btnIdx,gs){
-  const n=ps.length;
-  for(let i=1;i<=n;i++){const p=ps[(btnIdx+i)%n];if(!gs.folded[p.id]&&!gs.down[p.id])return p.id;}
-  return null;
+function allAliveAllIn(gs,ps,chips){
+  const alive=aliveIds(gs,ps);
+  if(alive.length<=1)return true;
+  return alive.every(id=>(chips[id]||0)===0);
 }
 
-function findNextActor(ps,curId,gs){
-  const ids=ps.map(p=>p.id);const ci=ids.indexOf(curId);const n=ids.length;
-  for(let i=1;i<n;i++){
-    const id=ids[(ci+i)%n];
-    if(gs.folded[id]||gs.down[id])continue;
-    if(!gs.betting.acted[id]||(gs.betting.bets[id]||0)<gs.betting.currentBet)return id;
-  }
-  return null;
-}
-
-function startBetting(gs,ps){
+function startBetting(gs,ps,chips){
   const alive=aliveIds(gs,ps);
   if(alive.length<=1)return null;
+  if(allAliveAllIn(gs,ps,chips))return null;
   const fid=findFirstActor(ps,gs.btn,gs);
   if(!fid)return null;
   return{currentBet:0,bets:{},acted:{},actorId:fid,minRaise:10};
@@ -81,7 +74,7 @@ function makeGame(ps,round,btn){
     log:["R"+(round||1)+": ディール完了 — BTN: "+ps[btn||0].name]};
 }
 
-function doAdvancePhase(gs,ps){
+function openCards(gs,ps){
   const s=dc(gs);
   const n=s.phase==="deal"?3:s.phase==="flop"?2:s.phase==="turn"?1:0;
   if(!n)return s;
@@ -98,7 +91,6 @@ function doAdvancePhase(gs,ps){
     s.hands[p.id]=kept;s.disc[p.id]=[...(s.disc[p.id]||[]),...toss];
     s.log.push(p.name+": "+(toss.length?toss.map(c=>c.rank+c.suit).join(" ")+" 捨て":"捨てなし")+"（残"+kept.length+"枚）");
   }
-  // Bust check on river: 0 cards or 6 cards
   if(next==="river"){
     for(const p of ps){
       if(s.folded[p.id]||s.down[p.id])continue;
@@ -108,13 +100,28 @@ function doAdvancePhase(gs,ps){
     }
   }
   s.phase=next;
-  // If only 0-1 alive, go straight to showdown
+  return s;
+}
+
+function doAdvancePhase(gs,ps,chips){
+  let s=openCards(gs,ps);
   const alive=aliveIds(s,ps);
   if(alive.length<=1)return doShowdown(s,ps);
-  // Start betting round
-  s.betting=startBetting(s,ps);
-  if(s.betting){const an=ps.find(p=>p.id===s.betting.actorId);s.log.push("🎲 ベッティング開始 → "+((an&&an.name)||"?"));}
-  return s;
+  // Try to start betting
+  const bet=startBetting(s,ps,chips);
+  if(bet){
+    s.betting=bet;
+    const an=(ps.find(p=>p.id===bet.actorId)||{}).name||"?";
+    s.log.push("🎲 ベッティング開始 → "+an);
+    return s;
+  }
+  // All-in or no betting needed: auto-advance
+  if(s.phase==="river"){
+    s.log.push("⚡ 全員オールイン → ショーダウン");
+    return doShowdown(s,ps);
+  }
+  s.log.push("⚡ 全員オールイン → 自動進行");
+  return doAdvancePhase(s,ps,chips);
 }
 
 function doBetAction(gs,room,ps,pid,action,amount){
@@ -122,26 +129,21 @@ function doBetAction(gs,room,ps,pid,action,amount){
   const pn=(ps.find(p=>p.id===pid)||{}).name||"?";
   const chips=r.chips;
 
-  if(action==="check"){
-    s.betting.acted[pid]=true;
-    s.log.push(pn+": チェック ✓");
-  }else if(action==="fold"){
-    s.folded[pid]=true;
-    s.log.push(pn+": フォールド ✕");
-  }else if(action==="bet"){
+  if(action==="check"){s.betting.acted[pid]=true;s.log.push(pn+": チェック ✓");}
+  else if(action==="fold"){s.folded[pid]=true;s.log.push(pn+": フォールド ✕");}
+  else if(action==="bet"){
     const amt=Math.min(amount,chips[pid]||0);
     s.betting.bets[pid]=amt;s.betting.currentBet=amt;s.betting.minRaise=amt;
-    // Reset acted for everyone except bettor
     aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});
     s.betting.acted[pid]=true;
     chips[pid]-=amt;s.pot+=amt;
-    s.log.push(pn+": ベット "+amt);
+    s.log.push(pn+": ベット "+amt+(chips[pid]===0?" (All-in)":""));
   }else if(action==="call"){
     const owed=Math.min(s.betting.currentBet-(s.betting.bets[pid]||0),chips[pid]||0);
     s.betting.bets[pid]=(s.betting.bets[pid]||0)+owed;
     s.betting.acted[pid]=true;
     chips[pid]-=owed;s.pot+=owed;
-    s.log.push(pn+": コール "+owed);
+    s.log.push(pn+": コール "+owed+(chips[pid]===0?" (All-in)":""));
   }else if(action==="raise"){
     const already=s.betting.bets[pid]||0;
     const total=Math.min(amount,already+(chips[pid]||0));
@@ -151,27 +153,20 @@ function doBetAction(gs,room,ps,pid,action,amount){
     aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});
     s.betting.acted[pid]=true;
     chips[pid]-=pay;s.pot+=pay;
-    s.log.push(pn+": レイズ → "+total);
+    s.log.push(pn+": レイズ → "+total+(chips[pid]===0?" (All-in)":""));
   }
 
-  // Check if only 1 alive
   const alive=aliveIds(s,ps);
-  if(alive.length<=1){
-    s.betting=null;
-    return{gs:doShowdown(s,ps),room:r};
-  }
-  // Find next actor
+  if(alive.length<=1){s.betting=null;return{gs:doShowdown(s,ps),room:r};}
   const ni=findNextActor(ps,pid,s);
-  if(ni){
-    s.betting.actorId=ni;
-  }else{
-    // Betting round over
-    s.betting=null;
-    s.log.push("ベッティング終了");
-    // If river betting done, go to showdown
-    if(s.phase==="river")return{gs:doShowdown(s,ps),room:r};
-  }
-  return{gs:s,room:r};
+  if(ni){s.betting.actorId=ni;return{gs:s,room:r};}
+  // Betting round over → auto-advance
+  s.betting=null;
+  s.log.push("ベッティング終了");
+  if(s.phase==="river"){return{gs:doShowdown(s,ps),room:r};}
+  // Auto-advance to next street
+  const ng=doAdvancePhase(s,ps,chips);
+  return{gs:ng,room:r};
 }
 
 function doShowdown(gs,ps){
@@ -187,16 +182,14 @@ function doShowdown(gs,ps){
   const act=ids.filter(id=>!s.folded[id]&&!s.down[id]);
   const w={};ids.forEach(id=>w[id]=0);
   if(!act.length){const sh=Math.floor(s.pot/ids.length);ids.forEach(id=>w[id]=sh);s.log.push("全員アウト → 返還");}
-  else if(act.length===1){w[act[0]]=s.pot;const nm=(ps.find(p=>p.id===act[0])||{}).name||"?";s.log.push("🏆 "+nm+" → "+s.pot+"チップ！");}
+  else if(act.length===1){w[act[0]]=s.pot;s.log.push("🏆 "+((ps.find(p=>p.id===act[0])||{}).name||"?")+" → "+s.pot+"チップ！");}
   else{
     const mH=Math.max(...act.map(id=>hi[id].score));const hW=act.find(id=>hi[id].score===mH);
     const mL=Math.min(...act.map(id=>lw[id]));const lW=mL===Infinity?hW:act.find(id=>lw[id]===mL);
     const half=Math.floor(s.pot/2),rem=s.pot-half*2;
     w[hW]+=half+rem;w[lW]+=half;
-    const hn=(ps.find(p=>p.id===hW)||{}).name||"?";
-    const ln=(ps.find(p=>p.id===lW)||{}).name||"?";
-    s.log.push("🏆 ハイ: "+hn+"（"+hi[hW].name+"）→ "+(half+rem));
-    s.log.push("🏆 ロー: "+ln+"（"+(mL===Infinity?"—":mL+"pt")+"）→ "+half);
+    s.log.push("🏆 ハイ: "+((ps.find(p=>p.id===hW)||{}).name||"?")+"（"+hi[hW].name+"）→ "+(half+rem));
+    s.log.push("🏆 ロー: "+((ps.find(p=>p.id===lW)||{}).name||"?")+"（"+(mL===Infinity?"—":mL+"pt")+"）→ "+half);
   }
   s.results={hi,lw,w};return s;
 }
@@ -221,18 +214,18 @@ export default function Scarney(){
   const isMyTurn=isBetting&&gs.betting.actorId===myId;
   const myChips=(room&&room.chips&&room.chips[myId])||0;
 
+  // Live hand evaluation
+  const myH=(gs&&gs.hands&&gs.hands[myId])||[];
+  const topCards=(gs&&gs.top||[]).filter(Boolean);
+  const liveEval=(!isSD&&myH.length>0&&topCards.length>0)?evalHand([...myH,...topCards]):null;
+
   useEffect(()=>{if(logR.current)logR.current.scrollTop=1e6;});
   useEffect(()=>{if(room&&room.gameState&&scr==="lobby")setScr("game");},[room,scr]);
   useEffect(()=>()=>{if(unR.current)unR.current();},[]);
-
-  const sub=useCallback(c=>{if(unR.current)unR.current();unR.current=subscribeRoom(c,d=>setRS(dc(d)));;},[]);
-
-  // Restore session
+  const sub=useCallback(c=>{if(unR.current)unR.current();unR.current=subscribeRoom(c,d=>setRS(dc(d)));},[]);
   useEffect(()=>{let x=false;(async()=>{const s=getSession();if(!s)return;const d=await getRoom(s.room);if(x)return;if(d&&d.players&&d.players.find(p=>p.id===s.id)){setCode(s.room);setRS(dc(d));setScr(d.gameState?"game":"lobby");sub(s.room);}})();return()=>{x=true;};},[sub]);
-
   const upd=useCallback(async(c,d,s)=>{const cp=dc(d);setRS(cp);if(s)setScr(s);await setRoom(c,cp);},[]);
 
-  // ─── ACTIONS ───
   const onCreate=async()=>{
     if(!name.trim()){setErr("名前を入力");return;}setErr("");
     const c=rcode();
@@ -254,7 +247,7 @@ export default function Scarney(){
   };
   const onAdvance=async()=>{
     if(!room||!gs||isBetting)return;
-    const g=doAdvancePhase(gs,room.players);
+    const g=doAdvancePhase(gs,room.players,room.chips);
     const d=dc(room);d.gameState=g;await upd(code,d);
   };
   const onBetAct=async(action,amount)=>{
@@ -276,7 +269,7 @@ export default function Scarney(){
     clearSession();}catch(e){}setScr("home");setRS(null);setCode("");setErr("");
   };
 
-  /* ═══════ RENDER HELPERS ═══════ */
+  /* ═══════ RENDER ═══════ */
   const crd=(card,o={})=>{
     const{faceDown,small,discarded,glow,dim}=o;
     const w=small?38:50,h=small?54:74,fs=small?9:13;
@@ -292,7 +285,7 @@ export default function Scarney(){
   const CS={minHeight:"100vh",background:"linear-gradient(160deg,#080c0a,#0d1f15,#080e0a)",color:"#e8e4d9",fontFamily:"'Segoe UI','Hiragino Sans','Noto Sans JP',sans-serif",padding:10};
   const TT={fontSize:24,fontWeight:900,textAlign:"center",background:"linear-gradient(90deg,#d4af37,#f5e07a,#d4af37)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:3,margin:"0 0 4px"};
 
-  /* ═══════ HOME ═══════ */
+  /* HOME */
   if(scr==="home")return<div style={CS}><div style={{maxWidth:400,margin:"0 auto",padding:"30px 16px"}}>
     <h1 style={TT}>♠ SCARNEY ♣</h1>
     <p style={{textAlign:"center",color:"#6a8a6e",fontSize:12,marginBottom:20}}>スカーニーポーカー</p>
@@ -318,7 +311,7 @@ export default function Scarney(){
     </div>
   </div></div>;
 
-  /* ═══════ LOBBY ═══════ */
+  /* LOBBY */
   if(scr==="lobby"){
     const ps=room?room.players||[]:[];const cs=room?room.stack||stack:stack;
     return<div style={CS}><div style={{maxWidth:400,margin:"0 auto",padding:"24px 16px"}}>
@@ -348,30 +341,31 @@ export default function Scarney(){
     </div></div>;
   }
 
-  /* ═══════ GAME ═══════ */
+  /* GAME */
   if(!gs||!room)return<div style={CS}><p style={{padding:40,textAlign:"center",color:"#888"}}>読み込み中...</p></div>;
   const players=room.players||[];
   const others=players.filter(p=>p.id!==myId);
-  const myH=(gs.hands&&gs.hands[myId])||[];
-  const myD=(gs.disc&&gs.disc[myId])||[];
+  const myDisc=(gs.disc&&gs.disc[myId])||[];
   const myDn=(gs.down&&gs.down[myId])||false;
   const myFold=(gs.folded&&gs.folded[myId])||false;
   const canAdv=isDlr&&!isBetting&&!isSD;
   const actorName=isBetting?(players.find(p=>p.id===gs.betting.actorId)||{}).name||"?":"";
-
   const myBetIn=isBetting?(gs.betting.bets[myId]||0):0;
   const toCall=isBetting?Math.max(0,gs.betting.currentBet-myBetIn):0;
   const minRaise=isBetting?(gs.betting.currentBet===0?10:gs.betting.currentBet+(gs.betting.minRaise||10)):10;
   const maxBet=myChips+myBetIn;
 
   return<div style={CS}>
-    {/* Header */}
+    {/* Header + Stack */}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
       <div>
         <div style={{fontSize:14,fontWeight:900,background:"linear-gradient(90deg,#d4af37,#f5e07a,#d4af37)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:2}}>♠ SCARNEY ♣</div>
         <div style={{fontSize:9,color:"#6a8a6e"}}>R{gs.round} ・ {code} ・ BTN: {(players[gs.btn]||{}).name||"?"}</div>
       </div>
-      <div style={{fontSize:11,color:"#90ee90"}}>🪙 {myChips}</div>
+      <div style={{background:"linear-gradient(135deg,rgba(144,238,144,0.15),rgba(144,238,144,0.05))",border:"1px solid rgba(144,238,144,0.3)",borderRadius:10,padding:"6px 14px",textAlign:"center"}}>
+        <div style={{fontSize:8,color:"#6aaa6e",fontWeight:600,letterSpacing:1}}>MY STACK</div>
+        <div style={{fontSize:22,fontWeight:900,color:"#90ee90",fontFamily:"Georgia,serif"}}>{myChips}</div>
+      </div>
     </div>
 
     {/* POT */}
@@ -380,7 +374,7 @@ export default function Scarney(){
       <div style={{fontSize:26,fontWeight:900,color:"#f0d060",fontFamily:"Georgia,serif",textShadow:"0 0 16px rgba(212,175,55,0.25)"}}>{gs.pot}</div>
     </div>
 
-    {/* Phase bar */}
+    {/* Phase */}
     <div style={{display:"flex",gap:2,marginBottom:6}}>
       {PH_LIST.map(p=>{const on=PH_LIST.indexOf(gs.phase)>=PH_LIST.indexOf(p);return<div key={p} style={{flex:1,textAlign:"center"}}>
         <div style={{height:3,borderRadius:2,marginBottom:1,background:on?"#d4af37":"rgba(255,255,255,0.04)"}}/>
@@ -404,10 +398,11 @@ export default function Scarney(){
         const isActor=isBetting&&gs.betting.actorId===p.id;
         const pBet=isBetting?(gs.betting.bets[p.id]||0):0;
         const isBtn2=gs.btn===players.indexOf(p);
+        const pChips=(room.chips&&room.chips[p.id])||0;
         return<div key={p.id} style={{flex:1,minWidth:110,background:fd?"rgba(100,100,100,0.06)":dn?"rgba(180,40,40,0.06)":isActor?"rgba(255,215,0,0.05)":"rgba(255,255,255,0.02)",borderRadius:8,padding:"4px 5px",border:isActor?"1px solid rgba(255,215,0,0.3)":dn?"1px solid rgba(180,40,40,0.15)":"1px solid rgba(255,255,255,0.04)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-            <span style={{fontSize:9,fontWeight:700}}>{isBtn2?"🔘":""}{p.id===room.dealerId?"👑":"🎮"}{p.name}{dn?"💀":fd?"✕":""}</span>
-            <span style={{fontSize:8,color:"#90ee90"}}>🪙{(room.chips&&room.chips[p.id])||0}</span>
+            <span style={{fontSize:9,fontWeight:700}}>{isBtn2?"🔘":""}{p.name}{dn?"💀":fd?"✕":""}</span>
+            <span style={{fontSize:10,fontWeight:700,color:pChips===0?"#e74c3c":"#90ee90"}}>🪙{pChips}</span>
           </div>
           {pBet>0&&<div style={{fontSize:8,color:"#d4af37",marginBottom:2}}>ベット: {pBet}</div>}
           <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
@@ -440,8 +435,13 @@ export default function Scarney(){
       {isBetting&&(gs.betting.bets[myId]||0)>0&&<div style={{fontSize:9,color:"#d4af37",marginBottom:3}}>ベット中: {gs.betting.bets[myId]}</div>}
       <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
         {myFold?<div style={{fontSize:11,color:"#666",padding:"10px 0"}}>フォールド済み</div>
-        :<>{myH.map((c,i)=><span key={i}>{crd(c,{glow:isSD&&!myDn})}</span>)}{myD.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true})}</span>)}</>}
+        :<>{myH.map((c,i)=><span key={i}>{crd(c,{glow:isSD&&!myDn})}</span>)}{myDisc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true})}</span>)}</>}
       </div>
+      {/* Live hand evaluation */}
+      {liveEval&&liveEval.rank>=0&&!myDn&&!myFold&&<div style={{marginTop:5,padding:"4px 10px",borderRadius:8,background:"linear-gradient(90deg,rgba(100,180,255,0.08),rgba(100,180,255,0.02))",border:"1px solid rgba(100,180,255,0.15)",fontSize:11}}>
+        🃏 現在の役: <strong style={{color:"#64b4ff"}}>{liveEval.name}</strong>
+      </div>}
+      {/* Showdown result */}
       {isSD&&gs.results&&!myDn&&!myFold&&<div style={{marginTop:4,padding:"3px 8px",borderRadius:6,fontSize:11,background:((gs.results.w&&gs.results.w[myId])||0)>0?"rgba(255,215,0,0.1)":"rgba(255,255,255,0.02)"}}>
         🏆 <strong>{gs.results.hi&&gs.results.hi[myId]?gs.results.hi[myId].name:"?"}</strong> ・ Low: <strong>{gs.results.lw&&gs.results.lw[myId]===Infinity?"—":((gs.results.lw&&gs.results.lw[myId])||"?")+"pt"}</strong>
         {((gs.results.w&&gs.results.w[myId])||0)>0&&<span style={{color:"#ffd700",marginLeft:6,fontWeight:700}}>+{gs.results.w[myId]}!</span>}
@@ -484,19 +484,17 @@ export default function Scarney(){
       </>}
     </div>}
 
-    {/* Dealer advance buttons */}
+    {/* Dealer advance */}
     <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:6,flexWrap:"wrap"}}>
       {canAdv&&gs.phase==="deal"&&abtn("フロップ ▶",onAdvance,"#d4af37",true)}
-      {canAdv&&gs.phase==="flop"&&abtn("ターン ▶",onAdvance,"#d4af37",true)}
-      {canAdv&&gs.phase==="turn"&&abtn("リバー ▶",onAdvance,"#d4af37",true)}
       {isDlr&&isSD&&abtn("次のラウンド ▶",onNext,"#d4af37",true)}
-      {!isDlr&&!isBetting&&!isSD&&gs.phase!=="deal"&&<div style={{padding:6,color:"#777",fontSize:11}}>👑 {(players.find(p=>p.id===room.dealerId)||{}).name||"?"} が次のストリートへ…</div>}
+      {!isDlr&&!isBetting&&!isSD&&gs.phase==="deal"&&<div style={{padding:6,color:"#777",fontSize:11}}>👑 ディーラーがフロップへ…</div>}
       {!isDlr&&isSD&&<div style={{padding:6,color:"#777",fontSize:11}}>次のラウンド待ち…</div>}
     </div>
 
     {/* Log */}
     <div ref={logR} style={{background:"rgba(0,0,0,0.25)",borderRadius:8,padding:6,maxHeight:120,overflowY:"auto",fontSize:9,lineHeight:1.7,border:"1px solid rgba(255,255,255,0.03)",color:"#7a9a7e",marginBottom:5}}>
-      {(gs.log||[]).map((l,i)=><div key={i} style={{color:l.includes("💀")?"#e74c3c":l.includes("🏆")?"#ffd700":l.startsWith("──")?"#d4af37":l.includes("🎲")?"#90ee90":l.includes("フォールド")?"#888":"#7a9a7e",fontWeight:l.startsWith("──")||l.includes("🏆")||l.includes("💀")||l.includes("🎲")?700:400}}>{l}</div>)}
+      {(gs.log||[]).map((l,i)=><div key={i} style={{color:l.includes("💀")?"#e74c3c":l.includes("🏆")?"#ffd700":l.startsWith("──")?"#d4af37":l.includes("🎲")?"#90ee90":l.includes("⚡")?"#64b4ff":l.includes("フォールド")?"#888":"#7a9a7e",fontWeight:l.startsWith("──")||l.includes("🏆")||l.includes("💀")||l.includes("🎲")||l.includes("⚡")?700:400}}>{l}</div>)}
     </div>
     <div style={{textAlign:"center"}}><button onClick={onLeave} style={{background:"none",border:"none",color:"#553",fontSize:10,cursor:"pointer",textDecoration:"underline"}}>退出</button></div>
   </div>;
