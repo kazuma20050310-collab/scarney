@@ -115,13 +115,14 @@ function doAdvancePhase(gs,ps,chips){
     s.log.push("🎲 ベッティング開始 → "+an);
     return s;
   }
-  // All-in or no betting needed: auto-advance
+  // All-in: skip betting, but DON'T auto-advance
+  // Dealer must click to go to next street
   if(s.phase==="river"){
     s.log.push("⚡ 全員オールイン → ショーダウン");
     return doShowdown(s,ps);
   }
-  s.log.push("⚡ 全員オールイン → 自動進行");
-  return doAdvancePhase(s,ps,chips);
+  s.log.push("⚡ 全員オールイン → ベッティングスキップ");
+  return s;
 }
 
 function doBetAction(gs,room,ps,pid,action,amount){
@@ -160,11 +161,11 @@ function doBetAction(gs,room,ps,pid,action,amount){
   if(alive.length<=1){s.betting=null;return{gs:doShowdown(s,ps),room:r};}
   const ni=findNextActor(ps,pid,s);
   if(ni){s.betting.actorId=ni;return{gs:s,room:r};}
-  // Betting round over → auto-advance
+  // Betting round over → auto-advance to next street
   s.betting=null;
   s.log.push("ベッティング終了");
   if(s.phase==="river"){return{gs:doShowdown(s,ps),room:r};}
-  // Auto-advance to next street
+  // Auto-advance
   const ng=doAdvancePhase(s,ps,chips);
   return{gs:ng,room:r};
 }
@@ -216,7 +217,7 @@ export default function Scarney(){
 
   // Live hand evaluation
   const myH=(gs&&gs.hands&&gs.hands[myId])||[];
-  const topCards=(gs&&gs.top||[]).filter(Boolean);
+  const topCards=(gs?(gs.top||[]):[]).filter(Boolean);
   const liveEval=(!isSD&&myH.length>0&&topCards.length>0)?evalHand([...myH,...topCards]):null;
 
   useEffect(()=>{if(logR.current)logR.current.scrollTop=1e6;});
@@ -258,9 +259,18 @@ export default function Scarney(){
   const onNext=async()=>{
     if(!room||!gs||!gs.results)return;
     const d=dc(room);const w=d.gameState.results.w;
+    // Add winnings to existing chips (don't reset!)
     d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});
     const nb=((d.gameState.btn||0)+1)%d.players.length;
-    d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb);await upd(code,d);
+    d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb);
+    await upd(code,d);
+  };
+  const onRebuy=async()=>{
+    if(!room)return;
+    const d=dc(room);
+    d.chips[myId]=(d.chips[myId]||0)+(d.stack||1000);
+    d.log_rebuy=[...(d.log_rebuy||[]),{id:myId,name:name,round:(gs&&gs.round)||"?"}];
+    await upd(code,d);
   };
   const onSetStack=async v=>{setStack(v);if(room&&isDlr){const d=dc(room);d.stack=v;d.players.forEach(p=>d.chips[p.id]=v);await upd(code,d);}};
   const onLeave=async()=>{
@@ -354,6 +364,7 @@ export default function Scarney(){
   const toCall=isBetting?Math.max(0,gs.betting.currentBet-myBetIn):0;
   const minRaise=isBetting?(gs.betting.currentBet===0?10:gs.betting.currentBet+(gs.betting.minRaise||10)):10;
   const maxBet=myChips+myBetIn;
+  const needRebuy=myChips===0&&isSD;
 
   return<div style={CS}>
     {/* Header + Stack */}
@@ -362,9 +373,9 @@ export default function Scarney(){
         <div style={{fontSize:14,fontWeight:900,background:"linear-gradient(90deg,#d4af37,#f5e07a,#d4af37)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:2}}>♠ SCARNEY ♣</div>
         <div style={{fontSize:9,color:"#6a8a6e"}}>R{gs.round} ・ {code} ・ BTN: {(players[gs.btn]||{}).name||"?"}</div>
       </div>
-      <div style={{background:"linear-gradient(135deg,rgba(144,238,144,0.15),rgba(144,238,144,0.05))",border:"1px solid rgba(144,238,144,0.3)",borderRadius:10,padding:"6px 14px",textAlign:"center"}}>
-        <div style={{fontSize:8,color:"#6aaa6e",fontWeight:600,letterSpacing:1}}>MY STACK</div>
-        <div style={{fontSize:22,fontWeight:900,color:"#90ee90",fontFamily:"Georgia,serif"}}>{myChips}</div>
+      <div style={{background:myChips===0?"linear-gradient(135deg,rgba(231,76,60,0.2),rgba(231,76,60,0.05))":"linear-gradient(135deg,rgba(144,238,144,0.15),rgba(144,238,144,0.05))",border:myChips===0?"1px solid rgba(231,76,60,0.4)":"1px solid rgba(144,238,144,0.3)",borderRadius:10,padding:"6px 14px",textAlign:"center"}}>
+        <div style={{fontSize:8,color:myChips===0?"#e74c3c":"#6aaa6e",fontWeight:600,letterSpacing:1}}>MY STACK</div>
+        <div style={{fontSize:22,fontWeight:900,color:myChips===0?"#e74c3c":"#90ee90",fontFamily:"Georgia,serif"}}>{myChips}</div>
       </div>
     </div>
 
@@ -484,11 +495,20 @@ export default function Scarney(){
       </>}
     </div>}
 
+    {/* Rebuy */}
+    {needRebuy&&<div style={{background:"rgba(231,76,60,0.08)",border:"1px solid rgba(231,76,60,0.25)",borderRadius:10,padding:12,marginBottom:6,textAlign:"center"}}>
+      <div style={{fontSize:13,color:"#e74c3c",fontWeight:700,marginBottom:6}}>💸 スタックがなくなりました</div>
+      <button onClick={onRebuy} style={{padding:"10px 30px",borderRadius:8,background:"#e74c3c",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>リバイ (+{room.stack||1000}) 🔄</button>
+    </div>}
+
     {/* Dealer advance */}
     <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:6,flexWrap:"wrap"}}>
       {canAdv&&gs.phase==="deal"&&abtn("フロップ ▶",onAdvance,"#d4af37",true)}
+      {canAdv&&gs.phase==="flop"&&abtn("ターン ▶",onAdvance,"#d4af37",true)}
+      {canAdv&&gs.phase==="turn"&&abtn("リバー ▶",onAdvance,"#d4af37",true)}
       {isDlr&&isSD&&abtn("次のラウンド ▶",onNext,"#d4af37",true)}
       {!isDlr&&!isBetting&&!isSD&&gs.phase==="deal"&&<div style={{padding:6,color:"#777",fontSize:11}}>👑 ディーラーがフロップへ…</div>}
+      {!isDlr&&!isBetting&&!isSD&&gs.phase!=="deal"&&gs.phase!=="showdown"&&<div style={{padding:6,color:"#777",fontSize:11}}>👑 ディーラーが次のストリートへ…</div>}
       {!isDlr&&isSD&&<div style={{padding:6,color:"#777",fontSize:11}}>次のラウンド待ち…</div>}
     </div>
 
