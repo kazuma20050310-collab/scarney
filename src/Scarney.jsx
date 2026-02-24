@@ -201,7 +201,7 @@ function doShowdown(gs,ps){
   });
   const act=ids.filter(id=>!s.folded[id]&&!s.down[id]);
   const w={};ids.forEach(id=>w[id]=0);
-  if(!act.length){const sh=Math.floor(s.pot/ids.length);ids.forEach(id=>w[id]=sh);s.log.push("全員アウト → 返還");}
+  if(!act.length){const busted=ids.filter(id=>s.down[id]&&!s.folded[id]);if(busted.length){const sh=Math.floor(s.pot/busted.length);busted.forEach(id=>w[id]=sh);s.log.push("全員バースト → バースト者で折半");}else{const sh=Math.floor(s.pot/ids.length);ids.forEach(id=>w[id]=sh);s.log.push("全員アウト → 返還");}}
   else if(act.length===1){w[act[0]]=s.pot;s.log.push("🏆 "+((ps.find(p=>p.id===act[0])||{}).name||"?")+" → "+s.pot+"チップ！");}
   else{
     const mH=Math.max(...act.map(id=>hi[id].score));const hW=act.find(id=>hi[id].score===mH);
