@@ -119,11 +119,15 @@ function doShowdown(gs,ps){
   const act=ids.filter(id=>!s.folded[id]&&!s.down[id]);const w={};ids.forEach(id=>w[id]=0);
   if(!act.length){const busted=ids.filter(id=>s.down[id]&&!s.folded[id]);if(busted.length){const sh=Math.floor(s.pot/busted.length);busted.forEach(id=>w[id]=sh);s.log.push("全員バースト→折半");}else{const sh=Math.floor(s.pot/ids.length);ids.forEach(id=>w[id]=sh);s.log.push("返還");}}
   else if(act.length===1){w[act[0]]=s.pot;s.log.push("🏆"+((ps.find(p=>p.id===act[0])||{}).name||"?")+" +"+s.pot);}
-  else{const mH=Math.max(...act.map(id=>hi[id].score));const hW=act.find(id=>hi[id].score===mH);
-    const mL=Math.min(...act.map(id=>lw[id]));const lW=mL===Infinity?hW:act.find(id=>lw[id]===mL);
-    const half=Math.floor(s.pot/2),rem=s.pot-half*2;w[hW]+=half+rem;w[lW]+=half;
-    s.log.push("🏆Hi: "+((ps.find(p=>p.id===hW)||{}).name||"?")+" "+hi[hW].name+" +"+(half+rem));
-    s.log.push("🏆Lo: "+((ps.find(p=>p.id===lW)||{}).name||"?")+" "+(mL===Infinity?"—":mL+"pt")+" +"+half);}
+  else{const hiHalf=Math.floor(s.pot/2),loHalf=s.pot-hiHalf;
+    const mH=Math.max(...act.map(id=>hi[id].score));const hiWinners=act.filter(id=>hi[id].score===mH);
+    const mL=Math.min(...act.map(id=>lw[id]));const loWinners=mL===Infinity?hiWinners:act.filter(id=>lw[id]===mL);
+    const hiEach=Math.floor(hiHalf/hiWinners.length),hiRem=hiHalf-hiEach*hiWinners.length;
+    hiWinners.forEach((id,i)=>w[id]+=hiEach+(i===0?hiRem:0));
+    const loEach=Math.floor(loHalf/loWinners.length),loRem=loHalf-loEach*loWinners.length;
+    loWinners.forEach((id,i)=>w[id]+=loEach+(i===0?loRem:0));
+    s.log.push("🏆Hi: "+hiWinners.map(id=>(ps.find(p=>p.id===id)||{}).name||"?").join(",")+" "+hi[hiWinners[0]].name+(hiWinners.length>1?" (÷"+hiWinners.length+")":"")+" +"+(hiWinners.length>1?hiEach+"ea":hiHalf));
+    s.log.push("🏆Lo: "+loWinners.map(id=>(ps.find(p=>p.id===id)||{}).name||"?").join(",")+" "+(mL===Infinity?"—":mL+"pt")+(loWinners.length>1?" (÷"+loWinners.length+")":"")+" +"+(loWinners.length>1?loEach+"ea":loHalf));}
   s.results={hi,lw,w};return s;
 }
 
