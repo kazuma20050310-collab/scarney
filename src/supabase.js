@@ -78,6 +78,25 @@ export async function tryMatch(myId) {
     return { matched: true, roomCode: myEntry.room_code, isCreator: false }
   }
 
+  // Check for open matchmaking rooms with <6 players
+  const { data: matchedEntries } = await supabase
+    .from('matchmaking_queue')
+    .select('room_code')
+    .not('room_code', 'is', null)
+    .neq('player_id', myId)
+
+  if (matchedEntries && matchedEntries.length > 0) {
+    const roomCodes = [...new Set(matchedEntries.map(e => e.room_code).filter(Boolean))];
+    for (const rc of roomCodes) {
+      const roomData = await getRoom(rc);
+      if (roomData && roomData.matchmaking && roomData.players && roomData.players.length < 6) {
+        // Join this existing room
+        await supabase.from('matchmaking_queue').update({ room_code: rc }).eq('player_id', myId)
+        return { matched: true, roomCode: rc, isCreator: false, joinExisting: true }
+      }
+    }
+  }
+
   // Look for another waiting player
   const { data: waiting } = await supabase
     .from('matchmaking_queue')

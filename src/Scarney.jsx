@@ -11,8 +11,9 @@ const RV = {2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,J:11,Q:12,K:13,A:14};
 const LP = {2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,J:10,Q:10,K:10,A:1};
 const HN = ["ハイカード","ワンペア","ツーペア","スリーカード","ストレート","フラッシュ","フルハウス","フォーカード","ストレートフラッシュ","ロイヤルフラッシュ"];
 const STACKS = [5000,10000,20000,40000];
-const ANTE = 200;
-const MATCH_STACK = 10000;
+const ANTE = 100;
+const MATCH_STACK = 20000;
+const MATCH_ANTE = 100;
 const PH_LIST = ["deal","flop","turn","river","showdown"];
 const PH_JP = {deal:"ディール",flop:"フロップ",turn:"ターン",river:"リバー",showdown:"ショーダウン"};
 
@@ -63,12 +64,13 @@ function findNextActor(ps,curId,gs){const ids=ps.map(p=>p.id);const ci=ids.index
 function allAliveAllIn(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return true;return alive.every(id=>(chips[id]||0)===0);}
 function startBetting(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return null;if(allAliveAllIn(gs,ps,chips))return null;const canAct=alive.filter(id=>(chips[id]||0)>0);if(canAct.length<1)return null;const fid=findFirstActor(ps,gs.btn,gs,chips);if(!fid)return null;const ai={};alive.forEach(id=>{if((chips[id]||0)===0)ai[id]=true;});return{currentBet:0,bets:{},acted:{},allIn:ai,actorId:fid,minRaise:10};}
 
-function makeGame(ps,round,btn,chips){
+function makeGame(ps,round,btn,chips,anteAmt){
+  const a=anteAmt||ANTE;
   const deck=makeDeck();const hands={},disc={},down={},reason={},folded={},totalIn={};let pot=0;const log=[];
   ps.forEach(p=>{hands[p.id]=deck.splice(0,6);disc[p.id]=[];down[p.id]=false;reason[p.id]="";folded[p.id]=false;
-    const ante=Math.min(ANTE,chips[p.id]||0);chips[p.id]-=ante;pot+=ante;totalIn[p.id]=ante;});
+    const ante=Math.min(a,chips[p.id]||0);chips[p.id]-=ante;pot+=ante;totalIn[p.id]=ante;});
   log.push("R"+(round||1)+" — BTN: "+ps[btn||0].name);
-  log.push("💰 ボムポット "+ANTE+" × "+ps.length+" → "+pot);
+  log.push("💰 ボムポット "+a+" × "+ps.length+" → "+pot);
   return{deck,hands,disc,down,reason,folded,totalIn,top:Array(6).fill(null),bot:Array(6).fill(null),phase:"deal",pot,round:round||1,btn:btn||0,betting:null,results:null,allInShow:false,log};
 }
 function openCards(gs,ps){
@@ -207,6 +209,7 @@ export default function Scarney(){
   const myChips=(room&&room.chips&&room.chips[myId])||0;
   const showHands=gs&&gs.allInShow;
   const myH=(gs&&gs.hands&&gs.hands[myId])||[];
+  const mySpectating=gs&&gs.hands&&!(myId in gs.hands);
   const topCards=(gs?(gs.top||[]):[]).filter(Boolean);
   const liveEval=(!isSD&&myH.length>0&&topCards.length>0)?evalHand([...myH,...topCards]):null;
   const myLow=myH.length>0?lowPts(myH):0;
@@ -238,18 +241,44 @@ export default function Scarney(){
     if(matchRef.current)clearInterval(matchRef.current);
     matchRef.current=setInterval(async()=>{setSearchTime(t=>t+2);const cnt=await getQueueCount();setQueueCount(cnt);
       const res=await tryMatch(myId);if(res.matched){clearInterval(matchRef.current);matchRef.current=null;const rc=res.roomCode;
-        if(res.isCreator){const d={code:rc,players:[{id:myId,name:name.trim()},res.opponent],dealerId:myId,chips:{[myId]:MATCH_STACK,[res.opponent.id]:MATCH_STACK},gameState:null,stack:MATCH_STACK};setCode(rc);saveSession(myId,name.trim(),rc);await upd(rc,d,"lobby");sub(rc);}
-        else{let at=0;const ji2=setInterval(async()=>{at++;const d=await getRoom(rc);if(d&&d.players){clearInterval(ji2);if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=MATCH_STACK;await setRoom(rc,d);}setCode(rc);saveSession(myId,name.trim(),rc);setRS(dc(d));setScr("lobby");sub(rc);}if(at>15)clearInterval(ji2);},1000);}}},2000);};
+        if(res.isCreator){
+          /* Creator: make room + auto-start */
+          const d={code:rc,players:[{id:myId,name:name.trim()},res.opponent],dealerId:myId,chips:{[myId]:MATCH_STACK,[res.opponent.id]:MATCH_STACK},gameState:null,stack:MATCH_STACK,matchmaking:true,resetStack:true,ante:MATCH_ANTE};
+          d.gameState=makeGame(d.players,1,0,d.chips,MATCH_ANTE);
+          setCode(rc);saveSession(myId,name.trim(),rc);playCardFlip(3);await upd(rc,d,"game");sub(rc);
+        } else {
+          /* Joiner: wait for room then join (mid-game OK) */
+          let at=0;const ji2=setInterval(async()=>{at++;const d=await getRoom(rc);if(d&&d.players){clearInterval(ji2);
+            if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=d.stack||MATCH_STACK;await setRoom(rc,d);}
+            setCode(rc);saveSession(myId,name.trim(),rc);setRS(dc(d));setScr(d.gameState?"game":"lobby");sub(rc);
+          }if(at>15)clearInterval(ji2);},1000);
+        }
+      }},2000);};
   const onCancelMatch=async()=>{if(matchRef.current){clearInterval(matchRef.current);matchRef.current=null;}await leaveQueue(myId);setScr("home");setSearchTime(0);};
 
-  const onCreate=async()=>{if(!name.trim()){setErr("名前を入力");return;}setErr("");const c=rcode();const d={code:c,players:[{id:myId,name:name.trim()}],dealerId:myId,chips:{[myId]:stack},gameState:null,stack};setCode(c);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
+  const onCreate=async()=>{if(!name.trim()){setErr("名前を入力");return;}setErr("");const c=rcode();const d={code:c,players:[{id:myId,name:name.trim()}],dealerId:myId,chips:{[myId]:stack},gameState:null,stack,resetStack:false,rebuy:true,ante:ANTE};setCode(c);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
   const onJoin=async()=>{if(!name.trim()){setErr("名前を入力");return;}if(!ji.trim()){setErr("コードを入力");return;}setErr("");const c=ji.trim().toUpperCase();const d=await getRoom(c);if(!d||!d.players){setErr("ルーム見つかりません");return;}if(d.gameState&&d.gameState.phase!=="showdown"&&!d.players.find(p=>p.id===myId)){setErr("ゲーム進行中");return;}if(d.players.length>=6&&!d.players.find(p=>p.id===myId)){setErr("満員");return;}if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=d.stack||10000;}setCode(c);setStack(d.stack||10000);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
-  const onStart=async()=>{if(!room||room.players.length<2)return;const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips);playCardFlip(3);await upd(code,d,"game");};
+  const onStart=async()=>{if(!room||room.players.length<2)return;const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips,d.ante||ANTE);playCardFlip(3);await upd(code,d,"game");};
   const onAdvance=async()=>{if(!room||!gs||isBetting)return;const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);const nc=g.phase==="flop"?3:g.phase==="turn"||g.phase==="river"?1:0;if(nc)playCardFlip(nc);if(g.phase==="showdown")playWinSound();d.gameState=g;await upd(code,d);};
   const onBetAct=async(action,amount)=>{if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;if(action!=="fold")playChipSound();const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;if(ng.phase==="showdown")playWinSound();await upd(code,nr);};
-  const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});d.players.forEach(p=>{if((d.chips[p.id]||0)===0)d.chips[p.id]=d.stack||10000;});const nb=((d.gameState.btn||0)+1)%d.players.length;d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);playCardFlip(3);await upd(code,d);};
+  const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;
+    d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});
+    if(d.resetStack){d.players.forEach(p=>{d.chips[p.id]=d.stack||MATCH_STACK;});}
+    else if(d.rebuy){d.players.forEach(p=>{if((d.chips[p.id]||0)===0)d.chips[p.id]=d.stack||10000;});}
+    /* No-rebuy: players with 0 chips are eliminated */
+    const activePlayers=d.players.filter(p=>(d.chips[p.id]||0)>0);
+    if(!d.rebuy&&!d.resetStack&&activePlayers.length<=1){
+      /* Winner decided */
+      d.gameState=null;d.winner=activePlayers.length===1?activePlayers[0]:null;
+      await upd(code,d);return;
+    }
+    const nb=((d.gameState.btn||0)+1)%activePlayers.length;
+    d.gameState=makeGame(activePlayers,(d.gameState.round||1)+1,nb,d.chips,d.ante||ANTE);playCardFlip(3);await upd(code,d);};
 
   const onSetStack=async v=>{setStack(v);if(room&&isDlr){const d=dc(room);d.stack=v;d.players.forEach(p=>d.chips[p.id]=v);await upd(code,d);}};
+  const onToggleReset=async()=>{if(!room||!isDlr)return;const d=dc(room);d.resetStack=!d.resetStack;await upd(code,d);};
+  const onToggleRebuy=async()=>{if(!room||!isDlr)return;const d=dc(room);d.rebuy=!d.rebuy;await upd(code,d);};
+  const onNewMatch=async()=>{if(!room||!isDlr)return;const d=dc(room);d.winner=null;d.players.forEach(p=>{d.chips[p.id]=d.stack||10000;});d.gameState=null;await upd(code,d,"lobby");};
   const onLeave=async()=>{try{if(unR.current){unR.current();unR.current=null;}if(room){const d=dc(room);d.players=d.players.filter(p=>p.id!==myId);if(!d.players.length)await deleteRoom(code);else{if(d.dealerId===myId&&d.players.length)d.dealerId=d.players[0].id;await setRoom(code,d);}}clearSession();}catch(e){}setScr("home");setRS(null);setCode("");setErr("");};
 
   const onAddCPU=async()=>{if(!room||!isDlr||room.gameState)return;const d=dc(room);const cc=d.players.filter(p=>p.cpu).length;if(cc>=5||d.players.length>=6)return;const used=new Set(d.players.filter(p=>p.cpu).map(p=>p.name));let cn="";for(const n of CPU_NAMES)if(!used.has(n)){cn=n;break;}if(!cn)return;const id="cpu-"+uid();d.players.push({id,name:cn,cpu:true});d.chips[id]=d.stack||10000;await upd(code,d);};
@@ -282,7 +311,7 @@ export default function Scarney(){
     <button onClick={onMatchSearch} style={{width:"100%",padding:"16px",borderRadius:10,background:"linear-gradient(135deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:900,fontSize:17,cursor:"pointer",fontFamily:"inherit",letterSpacing:2,boxShadow:"0 4px 20px rgba(192,57,43,0.4)",textTransform:"uppercase"}}>
       🔍 FIND MATCH
     </button>
-    <div style={{textAlign:"center",fontSize:9,color:"#555",marginTop:4}}>Stack: {MATCH_STACK.toLocaleString()} fixed</div>
+    <div style={{textAlign:"center",fontSize:9,color:"#555",marginTop:4}}>Stack: {MATCH_STACK.toLocaleString()} / Ante: {MATCH_ANTE} / 毎ラウンドリセット</div>
     <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0"}}><div style={{flex:1,height:1,background:"rgba(212,175,55,0.12)"}}/><span style={{color:"#4a6a4e",fontSize:10,letterSpacing:2}}>PRIVATE</span><div style={{flex:1,height:1,background:"rgba(212,175,55,0.12)"}}/></div>
     <div style={{fontSize:10,color:"#7a9a7e",marginBottom:4,fontWeight:600}}>STACK</div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
@@ -334,6 +363,24 @@ export default function Scarney(){
           {STACKS.map(v=><button key={v} onClick={()=>onSetStack(v)} style={{padding:"3px 10px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:cs===v?"#d4af37":"rgba(255,255,255,0.04)",color:cs===v?"#0a0a0a":"#666",border:"none",cursor:"pointer"}}>{v.toLocaleString()}</button>)}
         </div>}
       </div>
+      {/* Stack Reset Toggle */}
+      {isDlr&&!room.gameState&&!room.matchmaking&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,margin:"6px 0",padding:"8px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>
+        <span style={{fontSize:10,color:"#7a9a7e",fontWeight:600}}>🔄 スタックリセット</span>
+        <button onClick={onToggleReset} style={{padding:"4px 14px",borderRadius:6,fontSize:10,fontWeight:800,fontFamily:"inherit",background:room.resetStack?"linear-gradient(145deg,#2a7a42,#1a5a2e)":"rgba(255,255,255,0.04)",color:room.resetStack?"#fff":"#555",border:room.resetStack?"none":"1px solid rgba(255,255,255,0.08)",cursor:"pointer",transition:"all 0.2s"}}>{room.resetStack?"ON":"OFF"}</button>
+        <span style={{fontSize:8,color:"#555"}}>{room.resetStack?"毎ラウンドリセット":"通常（持ち越し）"}</span>
+      </div>}
+      {!isDlr&&room&&room.resetStack&&!room.matchmaking&&<div style={{textAlign:"center",margin:"6px 0",padding:"6px",borderRadius:6,background:"rgba(42,122,66,0.08)",border:"1px solid rgba(42,122,66,0.15)"}}>
+        <span style={{fontSize:9,color:"#7aba7e"}}>🔄 スタックリセット ON</span>
+      </div>}
+      {/* Rebuy Toggle (only when resetStack is OFF) */}
+      {isDlr&&!room.gameState&&!room.matchmaking&&!room.resetStack&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,margin:"6px 0",padding:"8px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>
+        <span style={{fontSize:10,color:"#7a9a7e",fontWeight:600}}>💰 リバイ</span>
+        <button onClick={onToggleRebuy} style={{padding:"4px 14px",borderRadius:6,fontSize:10,fontWeight:800,fontFamily:"inherit",background:room.rebuy?"linear-gradient(145deg,#2a7a42,#1a5a2e)":"rgba(255,255,255,0.04)",color:room.rebuy?"#fff":"#555",border:room.rebuy?"none":"1px solid rgba(255,255,255,0.08)",cursor:"pointer",transition:"all 0.2s"}}>{room.rebuy?"ON":"OFF"}</button>
+        <span style={{fontSize:8,color:"#555"}}>{room.rebuy?"0でスタック補充":"0で脱落（観戦）"}</span>
+      </div>}
+      {!isDlr&&room&&!room.rebuy&&!room.resetStack&&!room.matchmaking&&<div style={{textAlign:"center",margin:"6px 0",padding:"6px",borderRadius:6,background:"rgba(192,57,43,0.08)",border:"1px solid rgba(192,57,43,0.15)"}}>
+        <span style={{fontSize:9,color:"#e74c3c"}}>💰 リバイ OFF — 0で脱落</span>
+      </div>}
       <div style={{background:"rgba(255,255,255,0.02)",borderRadius:10,padding:12,border:"1px solid rgba(255,255,255,0.04)",margin:"12px 0"}}>
         {ps.map((p,i)=><div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<ps.length-1?"1px solid rgba(255,255,255,0.03)":"none"}}>
           <div style={{width:32,height:32,borderRadius:"50%",background:p.id===myId?"linear-gradient(135deg,#d4af37,#b8962e)":"linear-gradient(135deg,#2a4a3a,#1a3a2a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:p.id===myId?"#0a0a0a":"#6a8a6e"}}>{p.name[0]}</div>
@@ -342,7 +389,7 @@ export default function Scarney(){
         </div>)}
         {ps.length<2&&<div style={{fontSize:11,color:"#555",textAlign:"center",padding:"8px 0"}}>Waiting for players...</div>}
       </div>
-      {isDlr&&!room.gameState&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,margin:"8px 0",padding:"10px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>
+      {isDlr&&!room.gameState&&!room.matchmaking&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,margin:"8px 0",padding:"10px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>
         <span style={{fontSize:10,color:"#7a9a7e",fontWeight:600}}>🤖 CPU</span>
         <button onClick={onRemoveCPU} disabled={!ps.some(p=>p.cpu)} style={{width:30,height:30,borderRadius:8,background:ps.some(p=>p.cpu)?"rgba(200,60,60,0.2)":"rgba(255,255,255,0.03)",color:ps.some(p=>p.cpu)?"#c04040":"#333",border:"1px solid rgba(255,255,255,0.06)",fontSize:16,fontWeight:900,cursor:ps.some(p=>p.cpu)?"pointer":"default",fontFamily:"inherit"}}>−</button>
         <span style={{fontSize:18,fontWeight:900,color:"#d4af37",minWidth:24,textAlign:"center",fontFamily:"monospace"}}>{ps.filter(p=>p.cpu).length}</span>
@@ -352,6 +399,31 @@ export default function Scarney(){
       {isDlr?goldBtn("START GAME ▶",onStart,ps.length<2,true):<div style={{textAlign:"center",padding:12,color:"#666",fontSize:12}}>Waiting for host...</div>}
       <div style={{height:10}}/>
       <div style={{textAlign:"center"}}>{darkBtn("LEAVE",onLeave,"rgba(90,51,51,0.3)")}</div>
+    </div></div>;
+  }
+
+  /* ═══════ WINNER SCREEN ═══════ */
+  if(room&&room.winner&&!gs){
+    const wp=room.winner;
+    return<div style={BG}><div style={{maxWidth:380,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}>
+      <h1 style={TT}>♠ SCARNEY ♣</h1>
+      <div style={{marginTop:40,padding:"30px 20px",borderRadius:16,background:"rgba(255,215,0,0.06)",border:"2px solid rgba(255,215,0,0.2)",boxShadow:"0 0 40px rgba(255,215,0,0.08)"}}>
+        <div style={{fontSize:48,marginBottom:10}}>🏆</div>
+        <div style={{fontSize:24,fontWeight:900,color:"#ffd700",letterSpacing:2,marginBottom:6}}>{wp.name}</div>
+        <div style={{fontSize:13,color:"#c9a84c",fontWeight:600}}>WINNER</div>
+        <div style={{fontSize:11,color:"#888",marginTop:8}}>全員を脱落させました</div>
+      </div>
+      <div style={{marginTop:20,display:"flex",flexDirection:"column",gap:6,padding:"0 20px"}}>
+        {room.players.filter(p=>p.id!==wp.id).map(p=><div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:8,background:"rgba(0,0,0,0.2)"}}>
+          <div style={{width:24,height:24,borderRadius:"50%",background:"#333",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:"#666"}}>{p.name[0]}</div>
+          <span style={{fontSize:11,color:"#666"}}>{p.name}</span>
+          <span style={{fontSize:9,color:"#c04040",marginLeft:"auto"}}>ELIMINATED</span>
+        </div>)}
+      </div>
+      <div style={{marginTop:24,display:"flex",gap:10,justifyContent:"center"}}>
+        {isDlr&&goldBtn("NEW MATCH ▶",onNewMatch,false)}
+        {darkBtn("LEAVE",onLeave,"rgba(90,51,51,0.3)")}
+      </div>
     </div></div>;
   }
 
@@ -452,6 +524,7 @@ export default function Scarney(){
       {/* ═══════ OPPONENT SEATS (positioned around table) ═══════ */}
       {orderedOthers.map((p,si)=>{
         const pos=seats[si]||seats[0];
+        const isSpectating=gs.hands&&!(p.id in gs.hands);
         const dn=gs.down&&gs.down[p.id];const fd=gs.folded&&gs.folded[p.id];
         const hd=(gs.hands&&gs.hands[p.id])||[];const dsc=(gs.disc&&gs.disc[p.id])||[];
         const wn=(gs.results&&gs.results.w&&gs.results.w[p.id])||0;
@@ -464,21 +537,23 @@ export default function Scarney(){
         const pLow=hd.length>0?lowPts(hd):0;
         const pEval=canSee&&hd.length>0&&topCards.length>0?evalHand([...hd,...topCards]):null;
 
-        return<div key={p.id} style={{position:"absolute",left:pos.left,top:pos.top,transform:"translate(-50%,-50%)",zIndex:3,width:110,textAlign:"center"}}>
+        return<div key={p.id} style={{position:"absolute",left:pos.left,top:pos.top,transform:"translate(-50%,-50%)",zIndex:3,width:110,textAlign:"center",opacity:isSpectating?0.5:1}}>
           {/* Avatar + name */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
             <div style={{position:"relative"}}>
-              <div style={{width:36,height:36,borderRadius:"50%",background:fd?"#333":dn?"#5a2020":isActor?"linear-gradient(135deg,#d4af37,#b8962e)":"linear-gradient(135deg,#2a4a3a,#1a3a2a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:isActor?"#0a0a0a":"#8aaa8e",border:isActor?"2.5px solid #ffd700":"2px solid rgba(255,255,255,0.1)",boxShadow:isActor?"0 0 12px rgba(255,215,0,0.4)":"0 2px 8px rgba(0,0,0,0.5)",transition:"all 0.3s"}}>{p.name[0]}</div>
+              <div style={{width:36,height:36,borderRadius:"50%",background:isSpectating?"#333":fd?"#333":dn?"#5a2020":isActor?"linear-gradient(135deg,#d4af37,#b8962e)":"linear-gradient(135deg,#2a4a3a,#1a3a2a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:isActor?"#0a0a0a":"#8aaa8e",border:isActor?"2.5px solid #ffd700":"2px solid rgba(255,255,255,0.1)",boxShadow:isActor?"0 0 12px rgba(255,215,0,0.4)":"0 2px 8px rgba(0,0,0,0.5)",transition:"all 0.3s"}}>{p.name[0]}</div>
               {isBtn2&&<div style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"#d4af37",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#0a0a0a",border:"1.5px solid #fff",boxShadow:"0 1px 4px rgba(0,0,0,0.5)"}}>D</div>}
             </div>
-            <div style={{fontSize:9,fontWeight:700,color:fd?"#555":dn?"#c04040":"#ddd",whiteSpace:"nowrap",textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>{p.cpu?"🤖":"" }{p.name}{dn?" 💀":fd?" ✕":""}</div>
+            <div style={{fontSize:9,fontWeight:700,color:isSpectating?"#888":fd?"#555":dn?"#c04040":"#ddd",whiteSpace:"nowrap",textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>{p.cpu?"🤖":"" }{p.name}{dn?" 💀":fd?" ✕":""}</div>
             <div style={{fontSize:9,fontWeight:700,color:pChips===0?"#c04040":"#7aba7e",textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>{pChips.toLocaleString()}</div>
-            {pAllIn&&<div style={{fontSize:7,color:"#ff4444",fontWeight:800,textShadow:"0 0 6px rgba(255,0,0,0.3)"}}>ALL-IN</div>}
-            {!pAllIn&&pBet>0&&<div style={{fontSize:7,color:"#f0d060",fontWeight:700}}>{pBet.toLocaleString()}</div>}
+            {isSpectating&&<div style={{fontSize:7,color:"#64b4ff",fontWeight:700}}>WAITING</div>}
+            {!isSpectating&&pAllIn&&<div style={{fontSize:7,color:"#ff4444",fontWeight:800,textShadow:"0 0 6px rgba(255,0,0,0.3)"}}>ALL-IN</div>}
+            {!isSpectating&&!pAllIn&&pBet>0&&<div style={{fontSize:7,color:"#f0d060",fontWeight:700}}>{pBet.toLocaleString()}</div>}
           </div>
           {/* Cards — single card with count when hidden */}
           <div style={{display:"flex",gap:1,justifyContent:"center",flexWrap:"wrap",marginTop:2}}>
-            {fd?<div style={{fontSize:7,color:"#444"}}>FOLD</div>
+            {isSpectating?null
+            :fd?<div style={{fontSize:7,color:"#444"}}>FOLD</div>
             :canSee?<>{hd.map((c,i)=><span key={i}>{crd(c,{mini:true,dim:dn})}</span>)}{dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,mini:true})}</span>)}</>
             :hd.length>0?<div style={{width:28,height:40,borderRadius:5,background:"linear-gradient(145deg,#1a472e,#0a2818)",border:"1.5px solid #2a6a3e",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}><span style={{fontSize:16,fontWeight:900,color:"#4a9a62"}}>{hd.length}</span></div>
             :null}
@@ -506,7 +581,8 @@ export default function Scarney(){
           </div>
           {/* My cards */}
           <div style={{display:"flex",gap:3,justifyContent:"center",flexWrap:"wrap",minHeight:60}}>
-            {myFold?<div style={{fontSize:12,color:"#444",padding:"16px 0"}}>FOLDED</div>
+            {mySpectating?<div style={{fontSize:12,color:"#64b4ff",padding:"16px 0",fontWeight:700}}>⏳ 次のラウンドから参加</div>
+            :myFold?<div style={{fontSize:12,color:"#444",padding:"16px 0"}}>FOLDED</div>
             :<>{myH.map((c,i)=><span key={i}>{crd(c,{glow:isSD&&!myDn})}</span>)}{myDisc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true})}</span>)}</>}
           </div>
           {/* Showdown result */}
