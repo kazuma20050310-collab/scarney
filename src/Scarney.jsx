@@ -62,7 +62,7 @@ function aliveIds(gs,ps){return ps.filter(p=>!gs.folded[p.id]&&!gs.down[p.id]).m
 function findFirstActor(ps,btnIdx,gs,chips){const n=ps.length;for(let i=1;i<=n;i++){const p=ps[(btnIdx+i)%n];if(!gs.folded[p.id]&&!gs.down[p.id]&&(chips[p.id]||0)>0)return p.id;}return null;}
 function findNextActor(ps,curId,gs){const ids=ps.map(p=>p.id);const ci=ids.indexOf(curId);const n=ids.length;for(let i=1;i<n;i++){const id=ids[(ci+i)%n];if(gs.folded[id]||gs.down[id])continue;if(gs.betting.allIn&&gs.betting.allIn[id])continue;if(!gs.betting.acted[id]||(gs.betting.bets[id]||0)<gs.betting.currentBet)return id;}return null;}
 function allAliveAllIn(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return true;return alive.every(id=>(chips[id]||0)===0);}
-function startBetting(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return null;if(allAliveAllIn(gs,ps,chips))return null;const canAct=alive.filter(id=>(chips[id]||0)>0);if(canAct.length<1)return null;const fid=findFirstActor(ps,gs.btn,gs,chips);if(!fid)return null;const ai={};alive.forEach(id=>{if((chips[id]||0)===0)ai[id]=true;});return{currentBet:0,bets:{},acted:{},allIn:ai,actorId:fid,minRaise:10};}
+function startBetting(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return null;if(allAliveAllIn(gs,ps,chips))return null;const canAct=alive.filter(id=>(chips[id]||0)>0);if(canAct.length<1)return null;const fid=findFirstActor(ps,gs.btn,gs,chips);if(!fid)return null;const ai={};alive.forEach(id=>{if((chips[id]||0)===0)ai[id]=true;});return{currentBet:0,bets:{},acted:{},allIn:ai,actorId:fid,minRaise:100};}
 
 function makeGame(ps,round,btn,chips,anteAmt){
   const a=anteAmt||ANTE;
@@ -314,7 +314,10 @@ export default function Scarney(){
   const onJoin=async()=>{if(!name.trim()){setErr("名前を入力");return;}if(!ji.trim()){setErr("コードを入力");return;}setErr("");const c=ji.trim().toUpperCase();const d=await getRoom(c);if(!d||!d.players){setErr("ルーム見つかりません");return;}if(d.gameState&&d.gameState.phase!=="showdown"&&!d.players.find(p=>p.id===myId)){setErr("ゲーム進行中");return;}if(d.players.length>=6&&!d.players.find(p=>p.id===myId)){setErr("満員");return;}if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=d.stack||10000;}setCode(c);setStack(d.stack||10000);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
   const onStart=async()=>{if(!room||room.players.length<2)return;const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips,d.ante||ANTE);playCardFlip(3);await upd(code,d,"game");};
   const onAdvance=async()=>{if(!room||!gs||isBetting)return;const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);if(g.phase==="showdown")playWinSound();d.gameState=g;await upd(code,d);};
-  const onBetAct=async(action,amount)=>{if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;if(action!=="fold")playChipSound();const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;if(ng.phase==="showdown")playWinSound();await upd(code,nr);};
+  const onBetAct=async(action,amount)=>{if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;
+    if(action==="bet"&&amount<100&&amount<myChips)return;
+    if(action==="raise"){const mr=gs.betting.currentBet+(gs.betting.minRaise||100);if(amount<mr&&amount<myChips+(gs.betting.bets[myId]||0))return;}
+    if(action!=="fold")playChipSound();const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;if(ng.phase==="showdown")playWinSound();await upd(code,nr);};
   const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;
     d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});
     if(d.resetStack){d.players.forEach(p=>{d.chips[p.id]=d.stack||MATCH_STACK;});}
@@ -651,13 +654,12 @@ export default function Scarney(){
           <button onClick={()=>onBetAct("bet",myChips)} style={{padding:"9px 14px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
           <button onClick={()=>onBetAct("fold")} style={{padding:"9px 14px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
         </div>
-        <div style={{display:"flex",gap:3,marginBottom:4,flexWrap:"wrap",justifyContent:"center"}}>
-          {[100,200,500,1000,2000].filter(v=>v<=myChips).map(v=><button key={v} onClick={()=>setBetAmt(v)} style={{padding:"3px 9px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.04)",color:betAmt===v?"#0a0a0a":"#888",border:"none",cursor:"pointer"}}>{v>=1000?(v/1000)+"K":v}</button>)}
-          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),100))} style={{padding:"3px 8px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
+        <div style={{display:"flex",gap:2,marginBottom:4,flexWrap:"wrap",justifyContent:"center"}}>
+          {[[10,"10%"],[25,"25%"],[33,"33%"],[50,"50%"],[75,"75%"],[100,"Pot"],[150,"1.5x"],[250,"2.5x"]].map(([pct,label])=>{const v=Math.max(100,Math.floor(gs.pot*pct/100));return v<=myChips&&gs.pot>0?<button key={pct} onClick={()=>setBetAmt(v)} style={{padding:"3px 7px",borderRadius:5,fontSize:9,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.04)",color:betAmt===v?"#0a0a0a":"#888",border:"none",cursor:"pointer"}}>{label}</button>:null;})}
         </div>
         <div style={{display:"flex",gap:5}}>
           <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"7px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:14,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
-          <button onClick={()=>onBetAct("bet",Math.min(betAmt,myChips))} style={{padding:"7px 20px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>BET</button>
+          <button onClick={()=>onBetAct("bet",Math.min(Math.max(betAmt,100),myChips))} style={{padding:"7px 20px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>BET</button>
         </div>
       </>:toCall>=myChips?<>
         <div style={{display:"flex",gap:5}}>
@@ -670,10 +672,8 @@ export default function Scarney(){
           <button onClick={()=>onBetAct("raise",myChips+myBetIn)} style={{padding:"9px 14px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
           <button onClick={()=>onBetAct("fold")} style={{padding:"9px 14px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
         </div>
-        <div style={{display:"flex",gap:3,marginBottom:4,flexWrap:"wrap",justifyContent:"center"}}>
-          <button onClick={()=>setBetAmt(minRaise)} style={{padding:"3px 8px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>MIN</button>
-          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),minRaise))} style={{padding:"3px 8px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
-          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(gs.pot,minRaise))} style={{padding:"3px 8px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>POT</button>}
+        <div style={{display:"flex",gap:2,marginBottom:4,flexWrap:"wrap",justifyContent:"center"}}>
+          {[["Min",minRaise],["2x",gs.betting.currentBet*2],["3x",gs.betting.currentBet*3],["4x",gs.betting.currentBet*4],["5x",gs.betting.currentBet*5]].map(([label,v])=>{const amt=Math.max(Math.floor(v),minRaise);return amt<=maxBet?<button key={label} onClick={()=>setBetAmt(amt)} style={{padding:"3px 8px",borderRadius:5,fontSize:9,fontWeight:700,fontFamily:"inherit",background:betAmt===amt?"#d4af37":"rgba(255,255,255,0.04)",color:betAmt===amt?"#0a0a0a":"#888",border:"none",cursor:"pointer"}}>{label}</button>:null;})}
         </div>
         <div style={{display:"flex",gap:5}}>
           <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"7px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:14,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
