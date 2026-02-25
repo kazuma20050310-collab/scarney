@@ -507,10 +507,10 @@ export default function Scarney(){
   // My seat = bottom center. Others clockwise: bottom-left → left → top → right → bottom-right
   const SEAT_MAP={
     1:[{left:'50%',top:'4%'}],
-    2:[{left:'16%',top:'38%'},{left:'84%',top:'38%'}],
-    3:[{left:'14%',top:'55%'},{left:'50%',top:'2%'},{left:'86%',top:'55%'}],
-    4:[{left:'13%',top:'58%'},{left:'22%',top:'10%'},{left:'78%',top:'10%'},{left:'87%',top:'58%'}],
-    5:[{left:'12%',top:'64%'},{left:'13%',top:'26%'},{left:'50%',top:'2%'},{left:'87%',top:'26%'},{left:'88%',top:'64%'}],
+    2:[{left:'10%',top:'30%'},{left:'90%',top:'30%'}],
+    3:[{left:'8%',top:'50%'},{left:'50%',top:'2%'},{left:'92%',top:'50%'}],
+    4:[{left:'7%',top:'52%'},{left:'20%',top:'6%'},{left:'80%',top:'6%'},{left:'93%',top:'52%'}],
+    5:[{left:'7%',top:'60%'},{left:'7%',top:'20%'},{left:'50%',top:'2%'},{left:'93%',top:'20%'},{left:'93%',top:'60%'}],
   };
   const seats=SEAT_MAP[orderedOthers.length]||SEAT_MAP[1];
 
@@ -648,50 +648,46 @@ export default function Scarney(){
       </div>
     </div>
 
-    {/* ═══════ BETTING UI (compact KKPoker style) ═══════ */}
-    {isMyTurn&&!myDn&&!myFold&&<div style={{flexShrink:0,padding:"6px 8px 6px",background:"rgba(0,0,0,0.55)",borderTop:"1px solid rgba(255,215,0,0.1)"}}>
-      {gs.betting.currentBet===0?<>
-        {/* Presets */}
-        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:6}}>
-          <div style={{display:"flex",gap:4,minWidth:"max-content"}}>
-          {[[10,"10%"],[25,"25%"],[33,"33%"],[50,"50%"],[75,"75%"],[100,"Pot"],[150,"1.5x"],[250,"2.5x"]].map(([pct,label])=>{const v=Math.max(100,Math.floor(gs.pot*pct/100));return v<=myChips&&gs.pot>0?<button key={pct} onClick={()=>setBetAmt(v)} style={{padding:"8px 14px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.08)",color:betAmt===v?"#0a0a0a":"#aaa",border:"none",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>:null;})}
+    {/* ═══════ BOTTOM BAR: LOG (left) + BETTING (right) ═══════ */}
+    <div style={{flexShrink:0,display:"flex",gap:4,padding:"4px 6px",background:"rgba(0,0,0,0.5)",borderTop:"1px solid rgba(255,255,255,0.05)",alignItems:"flex-end"}}>
+      {/* Log left */}
+      <div ref={logR} style={{width:90,minWidth:90,maxHeight:200,overflowY:"auto",background:"rgba(0,0,0,0.3)",borderRadius:6,padding:4,fontSize:7,lineHeight:1.5,color:"#4a6a4e"}}>
+        {(gs.log||[]).map((l,i)=><div key={i} style={{color:l.includes("💀")?"#c04040":l.includes("🏆")?"#d4af37":l.startsWith("──")?"#8aaa8e":l.includes("🎲")?"#7aba7e":l.includes("⚡")?"#64b4ff":l.includes("💰")?"#b8962e":"#4a6a4e",fontWeight:l.includes("🏆")||l.includes("💀")?700:400}}>{l}</div>)}
+      </div>
+      {/* Betting right */}
+      <div style={{flex:1,minWidth:0}}>
+      {isMyTurn&&!myDn&&!myFold?<>
+        {gs.betting.currentBet===0?<>
+          <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:4}}>
+            <div style={{display:"flex",gap:3,minWidth:"max-content"}}>
+            {[[10,"10%"],[25,"25%"],[33,"33%"],[50,"50%"],[75,"75%"],[100,"Pot"],[150,"1.5x"],[250,"2.5x"]].map(([pct,label])=>{const v=Math.max(100,Math.floor(gs.pot*pct/100));return v<=myChips&&gs.pot>0?<button key={pct} onClick={()=>setBetAmt(v)} style={{padding:"6px 10px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.08)",color:betAmt===v?"#0a0a0a":"#aaa",border:"none",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>:null;})}
+            </div>
           </div>
-        </div>
-        {/* Bet + input */}
-        <div style={{display:"flex",gap:4,marginBottom:5}}>
-          <button onClick={()=>onBetAct("bet",Math.min(Math.max(betAmt,100),myChips))} style={{flex:1,padding:"12px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Bet</button>
-          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{width:70,padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(0,0,0,0.4)",color:"#e8e4d9",fontSize:15,fontWeight:700,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
-        </div>
-        {/* Check */}
-        <button onClick={()=>onBetAct("check")} style={{width:"100%",padding:"12px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>Check</button>
-        {/* Fold */}
-        <button onClick={()=>onBetAct("fold")} style={{width:"100%",padding:"10px",borderRadius:8,background:"rgba(80,80,80,0.4)",color:"#999",border:"1px solid rgba(255,255,255,0.06)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Fold</button>
-      </>:toCall>=myChips?<>
-        <button onClick={()=>onBetAct("call")} style={{width:"100%",padding:"14px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>All-In {myChips.toLocaleString()}</button>
-        <button onClick={()=>onBetAct("fold")} style={{width:"100%",padding:"10px",borderRadius:8,background:"rgba(80,80,80,0.4)",color:"#999",border:"1px solid rgba(255,255,255,0.06)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Fold</button>
-      </>:<>
-        {/* Raise presets */}
-        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:6}}>
-          <div style={{display:"flex",gap:4,minWidth:"max-content"}}>
-          {[["Min",minRaise],["2x",gs.betting.currentBet*2],["2.5x",Math.floor(gs.betting.currentBet*2.5)],["3x",gs.betting.currentBet*3],["4x",gs.betting.currentBet*4],["5x",gs.betting.currentBet*5]].map(([label,v])=>{const amt=Math.max(Math.floor(v),minRaise);return amt<=maxBet?<button key={label} onClick={()=>setBetAmt(amt)} style={{padding:"8px 14px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:betAmt===amt?"#d4af37":"rgba(255,255,255,0.08)",color:betAmt===amt?"#0a0a0a":"#aaa",border:"none",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>:null;})}
+          <div style={{display:"flex",gap:3,marginBottom:3}}>
+            <button onClick={()=>onBetAct("bet",Math.min(Math.max(betAmt,100),myChips))} style={{flex:1,padding:"10px",borderRadius:7,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Bet</button>
+            <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{width:60,padding:"6px",borderRadius:7,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(0,0,0,0.4)",color:"#e8e4d9",fontSize:14,fontWeight:700,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
           </div>
-        </div>
-        {/* Raise + input */}
-        <div style={{display:"flex",gap:4,marginBottom:5}}>
-          <button onClick={()=>onBetAct("raise",Math.min(Math.max(betAmt,minRaise),maxBet))} disabled={myChips<=toCall} style={{flex:1,padding:"12px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",opacity:myChips<=toCall?0.3:1}}>Raise</button>
-          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{width:70,padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(0,0,0,0.4)",color:"#e8e4d9",fontSize:15,fontWeight:700,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
-        </div>
-        {/* Call */}
-        <button onClick={()=>onBetAct("call")} style={{width:"100%",padding:"12px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>Call {toCall.toLocaleString()}</button>
-        {/* Fold */}
-        <button onClick={()=>onBetAct("fold")} style={{width:"100%",padding:"10px",borderRadius:8,background:"rgba(80,80,80,0.4)",color:"#999",border:"1px solid rgba(255,255,255,0.06)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Fold</button>
-      </>}
-    </div>}
-
-    {/* ═══════ LOG (left overlay) ═══════ */}
-    <div ref={logR} style={{position:"fixed",left:4,top:40,width:90,maxHeight:"40vh",overflowY:"auto",background:"rgba(0,0,0,0.5)",borderRadius:6,padding:4,fontSize:8,lineHeight:1.6,color:"#4a6a4e",zIndex:10,backdropFilter:"blur(2px)"}}>
-      {(gs.log||[]).map((l,i)=><div key={i} style={{color:l.includes("💀")?"#c04040":l.includes("🏆")?"#d4af37":l.startsWith("──")?"#8aaa8e":l.includes("🎲")?"#7aba7e":l.includes("⚡")?"#64b4ff":l.includes("💰")?"#b8962e":"#4a6a4e",fontWeight:l.includes("🏆")||l.includes("💀")?700:400}}>{l}</div>)}
+          <button onClick={()=>onBetAct("check")} style={{width:"100%",padding:"10px",borderRadius:7,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:3}}>Check</button>
+          <button onClick={()=>onBetAct("fold")} style={{width:"100%",padding:"8px",borderRadius:7,background:"rgba(80,80,80,0.4)",color:"#999",border:"1px solid rgba(255,255,255,0.06)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Fold</button>
+        </>:toCall>=myChips?<>
+          <button onClick={()=>onBetAct("call")} style={{width:"100%",padding:"12px",borderRadius:7,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",marginBottom:3}}>All-In {myChips.toLocaleString()}</button>
+          <button onClick={()=>onBetAct("fold")} style={{width:"100%",padding:"8px",borderRadius:7,background:"rgba(80,80,80,0.4)",color:"#999",border:"1px solid rgba(255,255,255,0.06)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Fold</button>
+        </>:<>
+          <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:4}}>
+            <div style={{display:"flex",gap:3,minWidth:"max-content"}}>
+            {[["Min",minRaise],["2x",gs.betting.currentBet*2],["2.5x",Math.floor(gs.betting.currentBet*2.5)],["3x",gs.betting.currentBet*3],["4x",gs.betting.currentBet*4],["5x",gs.betting.currentBet*5]].map(([label,v])=>{const amt=Math.max(Math.floor(v),minRaise);return amt<=maxBet?<button key={label} onClick={()=>setBetAmt(amt)} style={{padding:"6px 10px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:betAmt===amt?"#d4af37":"rgba(255,255,255,0.08)",color:betAmt===amt?"#0a0a0a":"#aaa",border:"none",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>:null;})}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:3,marginBottom:3}}>
+            <button onClick={()=>onBetAct("raise",Math.min(Math.max(betAmt,minRaise),maxBet))} disabled={myChips<=toCall} style={{flex:1,padding:"10px",borderRadius:7,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",opacity:myChips<=toCall?0.3:1}}>Raise</button>
+            <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{width:60,padding:"6px",borderRadius:7,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(0,0,0,0.4)",color:"#e8e4d9",fontSize:14,fontWeight:700,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
+          </div>
+          <button onClick={()=>onBetAct("call")} style={{width:"100%",padding:"10px",borderRadius:7,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:3}}>Call {toCall.toLocaleString()}</button>
+          <button onClick={()=>onBetAct("fold")} style={{width:"100%",padding:"8px",borderRadius:7,background:"rgba(80,80,80,0.4)",color:"#999",border:"1px solid rgba(255,255,255,0.06)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Fold</button>
+        </>}
+      </>:<div style={{textAlign:"center",padding:8,color:"#555",fontSize:10}}>{isBetting?"⏳ "+((room.players||[]).find(p=>p.id===gs.betting.actorId)||{}).name:""}</div>}
+      </div>
     </div>
-    <div style={{textAlign:"center",padding:"3px 0 4px",flexShrink:0}}><button onClick={onLeave} style={{background:"none",border:"none",color:"#333",fontSize:8,cursor:"pointer"}}>EXIT</button></div>
+    <div style={{textAlign:"center",padding:"2px 0 3px",flexShrink:0}}><button onClick={onLeave} style={{background:"none",border:"none",color:"#333",fontSize:8,cursor:"pointer"}}>EXIT</button></div>
   </div>;
 }
