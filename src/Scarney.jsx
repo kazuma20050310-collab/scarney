@@ -104,7 +104,7 @@ function doBetAction(gs,room,ps,pid,action,amount){
   else if(action==="raise"){const already=s.betting.bets[pid]||0;const total=Math.min(amount,already+(chips[pid]||0));const pay=total-already;s.betting.minRaise=Math.max(total-s.betting.currentBet,s.betting.minRaise);s.betting.bets[pid]=total;s.betting.currentBet=total;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=pay;s.pot+=pay;s.log.push(pn+": Raise "+total+(chips[pid]===0?" AI":""));}
   const alive=aliveIds(s,ps);
   if(alive.length<=1){s.betting=null;return{gs:doShowdown(s,ps),room:r};}
-  if(allAliveAllIn(s,ps,chips)){s.betting=null;s.allInShow=true;s.log.push("⚡ All-in公開");return{gs:s,room:r};}
+  if(allAliveAllIn(s,ps,chips)){s.betting=null;if(s.phase==="river"){s.log.push("⚡ All-in → SD");return{gs:doShowdown(s,ps),room:r};}s.allInShow=true;s.log.push("⚡ All-in公開");return{gs:s,room:r};}
   const ni=findNextActor(ps,pid,s);
   if(ni){s.betting.actorId=ni;return{gs:s,room:r};}
   s.betting=null;s.log.push("Betting終了");
@@ -400,6 +400,7 @@ export default function Scarney(){
           {canAdv&&gs.phase==="deal"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>FLOP ▶</button>}
           {canAdv&&gs.phase==="flop"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>TURN ▶</button>}
           {canAdv&&gs.phase==="turn"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>RIVER ▶</button>}
+          {isDlr&&!isSD&&!isBetting&&gs.phase==="river"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>SHOWDOWN ▶</button>}
           {isDlr&&isSD&&<button onClick={onNext} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>NEXT ROUND ▶</button>}
         </div>
       </div>
