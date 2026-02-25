@@ -45,6 +45,18 @@ function eval5(cards){
 }
 function evalHand(cards){if(!cards||cards.length<5)return{rank:-1,name:"—",score:-1};let b=null;for(const c of combos(cards,5)){const e=eval5(c);if(!b||e.score>b.score)b=e;}return b;}
 
+const CPU_NAMES=["CPU-1","CPU-2","CPU-3","CPU-4","CPU-5"];
+function isCpu(p){return!!p.cpu;}
+function cpuDecide(gs,room,pid){
+  const chips=room.chips[pid]||0;if(chips===0)return{type:"check"};
+  const cb=gs.betting.currentBet,myBet=gs.betting.bets[pid]||0,toCall=cb-myBet;
+  const hand=gs.hands[pid]||[],top=(gs.top||[]).filter(Boolean);
+  const ev=hand.length>=2&&top.length>=3?evalHand([...hand,...top]):null;
+  const str=ev?ev.rank/9:0.3;
+  if(cb===0){const r=Math.random();if(r<0.55-str*0.2)return{type:"check"};const amt=Math.min(Math.max(100,Math.floor(gs.pot*(0.3+str*0.4))),chips);return{type:"bet",amount:amt};}
+  else{const r=Math.random(),ft=Math.max(0.05,0.35-str*0.3);if(r<ft&&toCall>chips*0.3)return{type:"fold"};if(r<ft+0.55||chips<=toCall)return{type:"call"};const ra=Math.min(cb+Math.max(gs.betting.minRaise||100,Math.floor(gs.pot*0.5)),chips+myBet);return{type:"raise",amount:ra};}
+}
+
 function aliveIds(gs,ps){return ps.filter(p=>!gs.folded[p.id]&&!gs.down[p.id]).map(p=>p.id);}
 function findFirstActor(ps,btnIdx,gs){const n=ps.length;for(let i=1;i<=n;i++){const p=ps[(btnIdx+i)%n];if(!gs.folded[p.id]&&!gs.down[p.id])return p.id;}return null;}
 function findNextActor(ps,curId,gs){const ids=ps.map(p=>p.id);const ci=ids.indexOf(curId);const n=ids.length;for(let i=1;i<n;i++){const id=ids[(ci+i)%n];if(gs.folded[id]||gs.down[id])continue;if(!gs.betting.acted[id]||(gs.betting.bets[id]||0)<gs.betting.currentBet)return id;}return null;}
@@ -128,7 +140,7 @@ export default function Scarney(){
   const[betAmt,setBetAmt]=useState(100);
   const[queueCount,setQueueCount]=useState(0);
   const[searchTime,setSearchTime]=useState(0);
-  const unR=useRef(null);const logR=useRef(null);const matchRef=useRef(null);
+  const unR=useRef(null);const logR=useRef(null);const matchRef=useRef(null);const roomRef=useRef(null);
 
   const isDlr=room?room.dealerId===myId:false;
   const gs=room?room.gameState:null;
@@ -147,7 +159,23 @@ export default function Scarney(){
   useEffect(()=>()=>{if(unR.current)unR.current();if(matchRef.current)clearInterval(matchRef.current);},[]);
   const sub=useCallback(c=>{if(unR.current)unR.current();unR.current=subscribeRoom(c,d=>setRS(dc(d)));},[]);
   useEffect(()=>{let x=false;(async()=>{const s=getSession();if(!s)return;const d=await getRoom(s.room);if(x)return;if(d&&d.players&&d.players.find(p=>p.id===s.id)){setCode(s.room);setRS(dc(d));setScr(d.gameState?"game":"lobby");sub(s.room);}})();return()=>{x=true;};},[sub]);
-  const upd=useCallback(async(c,d,s)=>{const cp=dc(d);setRS(cp);if(s)setScr(s);await setRoom(c,cp);},[]);
+  const upd=useCallback(async(c,d,s)=>{const cp=dc(d);setRS(cp);roomRef.current=cp;if(s)setScr(s);await setRoom(c,cp);},[]);
+
+  /* CPU auto-action */
+  useEffect(()=>{roomRef.current=room;},[room]);
+  useEffect(()=>{
+    if(!gs||!gs.betting||!room)return;
+    const aid=gs.betting.actorId;const actor=(room.players||[]).find(p=>p.id===aid);
+    if(!actor||!actor.cpu)return;
+    const t=setTimeout(async()=>{
+      const r=roomRef.current;if(!r||!r.gameState||!r.gameState.betting)return;
+      if(r.gameState.betting.actorId!==aid)return;
+      const dec=cpuDecide(r.gameState,r,aid);
+      const{gs:ng,room:nr}=doBetAction(r.gameState,r,r.players,aid,dec.type,dec.amount);
+      nr.gameState=ng;await upd(code,nr);
+    },600+Math.random()*800);
+    return()=>clearTimeout(t);
+  },[gs?.betting?.actorId,gs?.phase,gs?.pot]);
 
   const onMatchSearch=async()=>{if(!name.trim()){setErr("名前を入力");return;}setErr("");await joinQueue(myId,name.trim());setScr("matching");setSearchTime(0);
     if(matchRef.current)clearInterval(matchRef.current);
@@ -162,11 +190,13 @@ export default function Scarney(){
   const onStart=async()=>{if(!room||room.players.length<2)return;const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips);await upd(code,d,"game");};
   const onAdvance=async()=>{if(!room||!gs||isBetting)return;const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);d.gameState=g;await upd(code,d);};
   const onBetAct=async(action,amount)=>{if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;await upd(code,nr);};
-  const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});const nb=((d.gameState.btn||0)+1)%d.players.length;d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);await upd(code,d);};
+  const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});d.players.forEach(p=>{if(p.cpu&&(d.chips[p.id]||0)===0)d.chips[p.id]=d.stack||10000;});const nb=((d.gameState.btn||0)+1)%d.players.length;d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);await upd(code,d);};
   const onRebuy=async()=>{if(!room)return;const d=dc(room);d.chips[myId]=(d.chips[myId]||0)+(d.stack||10000);await upd(code,d);};
   const onSetStack=async v=>{setStack(v);if(room&&isDlr){const d=dc(room);d.stack=v;d.players.forEach(p=>d.chips[p.id]=v);await upd(code,d);}};
   const onLeave=async()=>{try{if(unR.current){unR.current();unR.current=null;}if(room){const d=dc(room);d.players=d.players.filter(p=>p.id!==myId);if(!d.players.length)await deleteRoom(code);else{if(d.dealerId===myId&&d.players.length)d.dealerId=d.players[0].id;await setRoom(code,d);}}clearSession();}catch(e){}setScr("home");setRS(null);setCode("");setErr("");};
 
+  const onAddCPU=async()=>{if(!room||!isDlr||room.gameState)return;const d=dc(room);const cc=d.players.filter(p=>p.cpu).length;if(cc>=5||d.players.length>=6)return;const used=new Set(d.players.filter(p=>p.cpu).map(p=>p.name));let cn="";for(const n of CPU_NAMES)if(!used.has(n)){cn=n;break;}if(!cn)return;const id="cpu-"+uid();d.players.push({id,name:cn,cpu:true});d.chips[id]=d.stack||10000;await upd(code,d);};
+  const onRemoveCPU=async()=>{if(!room||!isDlr||room.gameState)return;const d=dc(room);const last=[...d.players].reverse().find(p=>p.cpu);if(!last)return;d.players=d.players.filter(p=>p.id!==last.id);delete d.chips[last.id];await upd(code,d);};
   /* ═══════ CARD RENDER ═══════ */
   const crd=(card,o={})=>{
     const{faceDown,small,mini,discarded,glow,dim}=o;
@@ -250,11 +280,18 @@ export default function Scarney(){
       <div style={{background:"rgba(255,255,255,0.02)",borderRadius:10,padding:12,border:"1px solid rgba(255,255,255,0.04)",margin:"12px 0"}}>
         {ps.map((p,i)=><div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<ps.length-1?"1px solid rgba(255,255,255,0.03)":"none"}}>
           <div style={{width:32,height:32,borderRadius:"50%",background:p.id===myId?"linear-gradient(135deg,#d4af37,#b8962e)":"linear-gradient(135deg,#2a4a3a,#1a3a2a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:p.id===myId?"#0a0a0a":"#6a8a6e"}}>{p.name[0]}</div>
-          <div><div style={{fontSize:13,fontWeight:p.id===myId?700:400,color:p.id===myId?"#d4af37":"#ccc"}}>{p.name}</div>
-            <div style={{fontSize:9,color:"#555"}}>{p.id===room.dealerId?"HOST":""}</div></div>
+          <div><div style={{fontSize:13,fontWeight:p.id===myId?700:400,color:p.id===myId?"#d4af37":"#ccc"}}>{p.cpu?"🤖 ":""}{p.name}</div>
+            <div style={{fontSize:9,color:"#555"}}>{p.id===room.dealerId?"HOST":p.cpu?"CPU":""}</div></div>
         </div>)}
         {ps.length<2&&<div style={{fontSize:11,color:"#555",textAlign:"center",padding:"8px 0"}}>Waiting for players...</div>}
       </div>
+      {isDlr&&!room.gameState&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,margin:"8px 0",padding:"10px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>
+        <span style={{fontSize:10,color:"#7a9a7e",fontWeight:600}}>🤖 CPU</span>
+        <button onClick={onRemoveCPU} disabled={!ps.some(p=>p.cpu)} style={{width:30,height:30,borderRadius:8,background:ps.some(p=>p.cpu)?"rgba(200,60,60,0.2)":"rgba(255,255,255,0.03)",color:ps.some(p=>p.cpu)?"#c04040":"#333",border:"1px solid rgba(255,255,255,0.06)",fontSize:16,fontWeight:900,cursor:ps.some(p=>p.cpu)?"pointer":"default",fontFamily:"inherit"}}>−</button>
+        <span style={{fontSize:18,fontWeight:900,color:"#d4af37",minWidth:24,textAlign:"center",fontFamily:"monospace"}}>{ps.filter(p=>p.cpu).length}</span>
+        <button onClick={onAddCPU} disabled={ps.filter(p=>p.cpu).length>=5||ps.length>=6} style={{width:30,height:30,borderRadius:8,background:ps.filter(p=>p.cpu).length<5&&ps.length<6?"rgba(42,122,66,0.2)":"rgba(255,255,255,0.03)",color:ps.filter(p=>p.cpu).length<5&&ps.length<6?"#2a7a42":"#333",border:"1px solid rgba(255,255,255,0.06)",fontSize:16,fontWeight:900,cursor:ps.filter(p=>p.cpu).length<5&&ps.length<6?"pointer":"default",fontFamily:"inherit"}}>+</button>
+        <span style={{fontSize:9,color:"#555"}}>({ps.filter(p=>p.cpu).length}/5)</span>
+      </div>}
       {isDlr?goldBtn("START GAME ▶",onStart,ps.length<2,true):<div style={{textAlign:"center",padding:12,color:"#666",fontSize:12}}>Waiting for host...</div>}
       <div style={{height:10}}/>
       <div style={{textAlign:"center"}}>{darkBtn("LEAVE",onLeave,"rgba(90,51,51,0.3)")}</div>
@@ -305,7 +342,7 @@ export default function Scarney(){
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
               <div style={{display:"flex",alignItems:"center",gap:4}}>
                 <div style={{width:22,height:22,borderRadius:"50%",background:fd?"#333":dn?"#5a2020":"linear-gradient(135deg,#2a4a3a,#1a3a2a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#8aaa8e",border:isBtn2?"2px solid #d4af37":"none"}}>{p.name[0]}</div>
-                <span style={{fontSize:9,fontWeight:700,color:fd?"#555":dn?"#c04040":"#ccc"}}>{p.name}{dn?"💀":fd?"✕":""}</span>
+                <span style={{fontSize:9,fontWeight:700,color:fd?"#555":dn?"#c04040":"#ccc"}}>{p.cpu?"🤖 ":""}{p.name}{dn?"💀":fd?"✕":""}</span>
               </div>
               <span style={{fontSize:9,fontWeight:700,color:pChips===0?"#c04040":"#7aba7e"}}>{pChips.toLocaleString()}</span>
             </div>
