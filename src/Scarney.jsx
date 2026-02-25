@@ -215,8 +215,8 @@ export default function Scarney(){
   const onStart=async()=>{if(!room||room.players.length<2)return;const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips);await upd(code,d,"game");};
   const onAdvance=async()=>{if(!room||!gs||isBetting)return;const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);d.gameState=g;await upd(code,d);};
   const onBetAct=async(action,amount)=>{if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;await upd(code,nr);};
-  const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});d.players.forEach(p=>{if(p.cpu&&(d.chips[p.id]||0)===0)d.chips[p.id]=d.stack||10000;});const nb=((d.gameState.btn||0)+1)%d.players.length;d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);await upd(code,d);};
-  const onRebuy=async()=>{if(!room)return;const d=dc(room);d.chips[myId]=(d.chips[myId]||0)+(d.stack||10000);await upd(code,d);};
+  const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});d.players.forEach(p=>{if((d.chips[p.id]||0)===0)d.chips[p.id]=d.stack||10000;});const nb=((d.gameState.btn||0)+1)%d.players.length;d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);await upd(code,d);};
+
   const onSetStack=async v=>{setStack(v);if(room&&isDlr){const d=dc(room);d.stack=v;d.players.forEach(p=>d.chips[p.id]=v);await upd(code,d);}};
   const onLeave=async()=>{try{if(unR.current){unR.current();unR.current=null;}if(room){const d=dc(room);d.players=d.players.filter(p=>p.id!==myId);if(!d.players.length)await deleteRoom(code);else{if(d.dealerId===myId&&d.players.length)d.dealerId=d.players[0].id;await setRoom(code,d);}}clearSession();}catch(e){}setScr("home");setRS(null);setCode("");setErr("");};
 
@@ -332,7 +332,7 @@ export default function Scarney(){
   const toCall=isBetting?Math.max(0,gs.betting.currentBet-myBetIn):0;
   const minRaise=isBetting?(gs.betting.currentBet===0?100:gs.betting.currentBet+(gs.betting.minRaise||100)):100;
   const maxBet=myChips+myBetIn;
-  const needRebuy=myChips===0&&gs.phase==="deal";
+
 
   return<div style={{...BG,padding:"6px 8px",display:"flex",flexDirection:"column",minHeight:"100vh"}}>
     {/* Top bar */}
@@ -448,11 +448,6 @@ export default function Scarney(){
         </div>}
       </div>
 
-      {/* Rebuy */}
-      {needRebuy&&<div style={{textAlign:"center",padding:10,background:"rgba(200,40,40,0.08)",borderRadius:10,border:"1px solid rgba(200,40,40,0.2)"}}>
-        <div style={{fontSize:12,color:"#c04040",fontWeight:700,marginBottom:6}}>💸 BUSTED</div>
-        <button onClick={onRebuy} style={{padding:"8px 24px",borderRadius:8,background:"#c0392b",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>REBUY +{(room.stack||10000).toLocaleString()} 🔄</button>
-      </div>}
 
       {/* ═══════ BETTING UI ═══════ */}
       {isMyTurn&&!myDn&&!myFold&&<div style={{background:"rgba(0,0,0,0.35)",borderRadius:12,padding:10,border:"1px solid rgba(255,215,0,0.15)"}}>
