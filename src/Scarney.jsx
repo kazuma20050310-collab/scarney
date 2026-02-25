@@ -217,7 +217,8 @@ export default function Scarney(){
   const liveEval=(!isSD&&myH.length>0&&topCards.length>0)?evalHand([...myH,...topCards]):null;
   const myLow=myH.length>0?lowPts(myH):0;
   const targetCount=gs?(gs.top||[]).filter(Boolean).length:0;
-  const canAdv=gs&&isDlr&&!isBetting&&!isSD;
+  const isLeader=room&&room.players&&room.players.length>0&&room.players[0].id===myId;
+  const canAdv=gs&&isLeader&&!isBetting&&!isSD;
   const cardsReady=revealCount>=targetCount;
 
   useEffect(()=>{if(logR.current)logR.current.scrollTop=1e6;});
@@ -252,7 +253,7 @@ export default function Scarney(){
   },[canAdv,gs?.phase,cardsReady]);
   /* Auto next round after showdown */
   useEffect(()=>{
-    if(!isDlr||!gs||!isSD||!gs.results)return;
+    if(!isLeader||!gs||!isSD||!gs.results)return;
     const t=setTimeout(async()=>{
       const r=roomRef.current;if(!r||!r.gameState||!r.gameState.results)return;
       const d=dc(r);const w=d.gameState.results.w;
