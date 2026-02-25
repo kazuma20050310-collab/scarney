@@ -647,37 +647,41 @@ export default function Scarney(){
     </div>
 
     {/* ═══════ BETTING UI ═══════ */}
-    {isMyTurn&&!myDn&&!myFold&&<div style={{flexShrink:0,padding:"4px 8px 2px",background:"rgba(0,0,0,0.5)",borderTop:"1px solid rgba(255,215,0,0.1)"}}>
+    {isMyTurn&&!myDn&&!myFold&&<div style={{flexShrink:0,padding:"6px 8px 4px",background:"rgba(0,0,0,0.5)",borderTop:"1px solid rgba(255,215,0,0.1)"}}>
       {gs.betting.currentBet===0?<>
-        <div style={{display:"flex",gap:5,marginBottom:6}}>
-          <button onClick={()=>onBetAct("check")} style={{flex:1,padding:"9px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CHECK ✓</button>
-          <button onClick={()=>onBetAct("bet",myChips)} style={{padding:"9px 14px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
-          <button onClick={()=>onBetAct("fold")} style={{padding:"9px 14px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <button onClick={()=>onBetAct("check")} style={{flex:1,padding:"14px",borderRadius:10,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CHECK ✓</button>
+          <button onClick={()=>onBetAct("bet",myChips)} style={{padding:"14px 16px",borderRadius:10,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN<br/><span style={{fontSize:11}}>{myChips.toLocaleString()}</span></button>
+          <button onClick={()=>onBetAct("fold")} style={{padding:"14px 16px",borderRadius:10,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
         </div>
-        <div style={{display:"flex",gap:2,marginBottom:4,flexWrap:"wrap",justifyContent:"center"}}>
-          {[[10,"10%"],[25,"25%"],[33,"33%"],[50,"50%"],[75,"75%"],[100,"Pot"],[150,"1.5x"],[250,"2.5x"]].map(([pct,label])=>{const v=Math.max(100,Math.floor(gs.pot*pct/100));return v<=myChips&&gs.pot>0?<button key={pct} onClick={()=>setBetAmt(v)} style={{padding:"3px 7px",borderRadius:5,fontSize:9,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.04)",color:betAmt===v?"#0a0a0a":"#888",border:"none",cursor:"pointer"}}>{label}</button>:null;})}
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:6,paddingBottom:4}}>
+          <div style={{display:"flex",gap:6,minWidth:"max-content",padding:"0 2px"}}>
+            {[[10,"10%"],[25,"25%"],[33,"33%"],[50,"50%"],[75,"75%"],[100,"Pot"],[150,"1.5x"],[250,"2.5x"]].map(([pct,label])=>{const v=Math.max(100,Math.floor(gs.pot*pct/100));return v<=myChips&&gs.pot>0?<button key={pct} onClick={()=>setBetAmt(v)} style={{padding:"10px 16px",borderRadius:8,fontSize:13,fontWeight:800,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.06)",color:betAmt===v?"#0a0a0a":"#aaa",border:betAmt===v?"none":"1px solid rgba(255,255,255,0.08)",cursor:"pointer",whiteSpace:"nowrap",minWidth:48}}>{label}<br/><span style={{fontSize:10,fontWeight:600,opacity:0.7}}>{v.toLocaleString()}</span></button>:null;})}
+          </div>
         </div>
-        <div style={{display:"flex",gap:5}}>
-          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"7px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:14,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
-          <button onClick={()=>onBetAct("bet",Math.min(Math.max(betAmt,100),myChips))} style={{padding:"7px 20px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>BET</button>
+        <div style={{display:"flex",gap:6}}>
+          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:16,fontWeight:700,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
+          <button onClick={()=>onBetAct("bet",Math.min(Math.max(betAmt,100),myChips))} style={{padding:"10px 24px",borderRadius:10,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:900,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>BET</button>
         </div>
       </>:toCall>=myChips?<>
-        <div style={{display:"flex",gap:5}}>
-          <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"11px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.4)",letterSpacing:1}}>ALL-IN {myChips.toLocaleString()}</button>
-          <button onClick={()=>onBetAct("fold")} style={{padding:"11px 16px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"16px",borderRadius:10,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:900,fontSize:16,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.4)",letterSpacing:1}}>ALL-IN {myChips.toLocaleString()}</button>
+          <button onClick={()=>onBetAct("fold")} style={{padding:"16px 20px",borderRadius:10,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
         </div>
       </>:<>
-        <div style={{display:"flex",gap:5,marginBottom:6}}>
-          <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"9px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CALL {toCall.toLocaleString()}</button>
-          <button onClick={()=>onBetAct("raise",myChips+myBetIn)} style={{padding:"9px 14px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
-          <button onClick={()=>onBetAct("fold")} style={{padding:"9px 14px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"14px",borderRadius:10,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CALL<br/><span style={{fontSize:12}}>{toCall.toLocaleString()}</span></button>
+          <button onClick={()=>onBetAct("raise",myChips+myBetIn)} style={{padding:"14px 16px",borderRadius:10,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN<br/><span style={{fontSize:11}}>{myChips.toLocaleString()}</span></button>
+          <button onClick={()=>onBetAct("fold")} style={{padding:"14px 16px",borderRadius:10,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
         </div>
-        <div style={{display:"flex",gap:2,marginBottom:4,flexWrap:"wrap",justifyContent:"center"}}>
-          {[["Min",minRaise],["2x",gs.betting.currentBet*2],["3x",gs.betting.currentBet*3],["4x",gs.betting.currentBet*4],["5x",gs.betting.currentBet*5]].map(([label,v])=>{const amt=Math.max(Math.floor(v),minRaise);return amt<=maxBet?<button key={label} onClick={()=>setBetAmt(amt)} style={{padding:"3px 8px",borderRadius:5,fontSize:9,fontWeight:700,fontFamily:"inherit",background:betAmt===amt?"#d4af37":"rgba(255,255,255,0.04)",color:betAmt===amt?"#0a0a0a":"#888",border:"none",cursor:"pointer"}}>{label}</button>:null;})}
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:6,paddingBottom:4}}>
+          <div style={{display:"flex",gap:6,minWidth:"max-content",padding:"0 2px"}}>
+            {[["Min",minRaise],["2x",gs.betting.currentBet*2],["3x",gs.betting.currentBet*3],["4x",gs.betting.currentBet*4],["5x",gs.betting.currentBet*5]].map(([label,v])=>{const amt=Math.max(Math.floor(v),minRaise);return amt<=maxBet?<button key={label} onClick={()=>setBetAmt(amt)} style={{padding:"10px 16px",borderRadius:8,fontSize:13,fontWeight:800,fontFamily:"inherit",background:betAmt===amt?"#d4af37":"rgba(255,255,255,0.06)",color:betAmt===amt?"#0a0a0a":"#aaa",border:betAmt===amt?"none":"1px solid rgba(255,255,255,0.08)",cursor:"pointer",whiteSpace:"nowrap",minWidth:48}}>{label}<br/><span style={{fontSize:10,fontWeight:600,opacity:0.7}}>{amt.toLocaleString()}</span></button>:null;})}
+          </div>
         </div>
-        <div style={{display:"flex",gap:5}}>
-          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"7px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:14,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
-          <button onClick={()=>onBetAct("raise",Math.min(Math.max(betAmt,minRaise),maxBet))} disabled={myChips<=toCall} style={{padding:"7px 20px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",opacity:myChips<=toCall?0.3:1}}>RAISE</button>
+        <div style={{display:"flex",gap:6}}>
+          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:16,fontWeight:700,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
+          <button onClick={()=>onBetAct("raise",Math.min(Math.max(betAmt,minRaise),maxBet))} disabled={myChips<=toCall} style={{padding:"10px 24px",borderRadius:10,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:900,fontSize:15,cursor:"pointer",fontFamily:"inherit",opacity:myChips<=toCall?0.3:1}}>RAISE</button>
         </div>
       </>}
     </div>}
