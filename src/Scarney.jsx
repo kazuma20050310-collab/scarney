@@ -380,7 +380,7 @@ export default function Scarney(){
               :Array(hd.length).fill(null).map((_,i)=><span key={i}>{crd(null,{faceDown:true,mini:true})}</span>)}
               {canSee&&!fd&&dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,mini:true})}</span>)}
             </div>
-            {canSee&&!fd&&!dn&&pEval&&pEval.rank>=0&&<div style={{fontSize:7,color:"#aaa",textAlign:"center",marginTop:2}}>{pEval.name}・<span style={{color:"#64b4ff"}}>{pLow}pt</span>{wn>0&&<strong style={{color:"#ffd700"}}> +{wn.toLocaleString()}</strong>}</div>}
+            {canSee&&!fd&&!dn&&pEval&&pEval.rank>=0&&<div style={{fontSize:11,color:"#e8e4d9",textAlign:"center",marginTop:4,padding:"4px 6px",borderRadius:6,background:wn>0?"rgba(255,215,0,0.08)":"rgba(0,0,0,0.2)",fontWeight:700}}>{pEval.name}・<span style={{color:"#64b4ff"}}>{pLow}pt</span>{wn>0&&<strong style={{color:"#ffd700"}}> +{wn.toLocaleString()}</strong>}</div>}
           </div>;
         })}
       </div>
@@ -435,7 +435,7 @@ export default function Scarney(){
             <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#d4af37,#b8962e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#0a0a0a",border:gs.btn===players.findIndex(p=>p.id===myId)?"2px solid #fff":"none"}}>{name[0]||"?"}</div>
             <div>
               <div style={{fontSize:11,fontWeight:700,color:"#d4af37"}}>{name} <span style={{fontSize:8,color:"#666"}}>({myH.length})</span>{myDn?<span style={{color:"#c04040",fontSize:9}}> 💀{gs.reason&&gs.reason[myId]}</span>:myFold?<span style={{color:"#555",fontSize:9}}> FOLD</span>:""}</div>
-              {myH.length>0&&!myDn&&!myFold&&<div style={{fontSize:9,color:"#64b4ff"}}>Low: {myLow}pt{liveEval&&liveEval.rank>=0&&<span style={{marginLeft:6,color:"#aaa"}}>• {liveEval.name}</span>}</div>}
+              {myH.length>0&&!myDn&&!myFold&&<div style={{fontSize:14,color:"#64b4ff",fontWeight:700,marginTop:2}}>Low: {myLow}pt{liveEval&&liveEval.rank>=0&&<span style={{marginLeft:8,color:"#e8e4d9"}}>• {liveEval.name}</span>}</div>}
             </div>
           </div>
           {gs.btn===players.findIndex(p=>p.id===myId)&&<span style={{fontSize:8,background:"#d4af37",color:"#0a0a0a",padding:"1px 6px",borderRadius:4,fontWeight:800}}>BTN</span>}
@@ -444,9 +444,10 @@ export default function Scarney(){
           {myFold?<div style={{fontSize:12,color:"#444",padding:"20px 0"}}>FOLDED</div>
           :<>{myH.map((c,i)=><span key={i}>{crd(c,{glow:isSD&&!myDn})}</span>)}{myDisc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true})}</span>)}</>}
         </div>
-        {isSD&&gs.results&&!myDn&&!myFold&&<div style={{textAlign:"center",marginTop:4,padding:"4px 10px",borderRadius:8,background:((gs.results.w&&gs.results.w[myId])||0)>0?"rgba(255,215,0,0.1)":"rgba(255,255,255,0.02)",fontSize:11}}>
-          🏆 <strong>{gs.results.hi&&gs.results.hi[myId]?gs.results.hi[myId].name:"?"}</strong> ・ {myLow}pt
-          {((gs.results.w&&gs.results.w[myId])||0)>0&&<span style={{color:"#ffd700",fontWeight:700,marginLeft:6}}>+{(gs.results.w[myId]||0).toLocaleString()}</span>}
+        {isSD&&gs.results&&!myDn&&!myFold&&<div style={{textAlign:"center",marginTop:6,padding:"8px 12px",borderRadius:10,background:((gs.results.w&&gs.results.w[myId])||0)>0?"rgba(255,215,0,0.12)":"rgba(255,255,255,0.03)",border:((gs.results.w&&gs.results.w[myId])||0)>0?"1px solid rgba(255,215,0,0.25)":"1px solid rgba(255,255,255,0.05)"}}>
+          <div style={{fontSize:16,fontWeight:800,color:"#e8e4d9"}}>🏆 {gs.results.hi&&gs.results.hi[myId]?gs.results.hi[myId].name:"?"}</div>
+          <div style={{fontSize:14,fontWeight:700,color:"#64b4ff",marginTop:2}}>Low: {myLow}pt</div>
+          {((gs.results.w&&gs.results.w[myId])||0)>0&&<div style={{fontSize:18,fontWeight:900,color:"#ffd700",marginTop:4}}>+{(gs.results.w[myId]||0).toLocaleString()}</div>}
         </div>}
       </div>
 
