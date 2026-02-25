@@ -334,167 +334,201 @@ export default function Scarney(){
   const maxBet=myChips+myBetIn;
 
 
-  return<div style={{...BG,padding:"6px 8px",display:"flex",flexDirection:"column",minHeight:"100vh"}}>
-    {/* Top bar */}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 4px 8px"}}>
+  /* ═══════ SEAT POSITIONS (KKPoker-style circular) ═══════ */
+  const myIdx=players.findIndex(p=>p.id===myId);
+  const n=players.length;
+  // Reorder: others arranged clockwise starting from my left
+  const orderedOthers=[];
+  for(let i=1;i<n;i++)orderedOthers.push(players[(myIdx+i)%n]);
+
+  // Seat positions for opponents around the table (percentages)
+  // Format: {left, top} — will be centered with transform
+  const SEAT_MAP={
+    1:[{left:'50%',top:'5%'}],
+    2:[{left:'15%',top:'12%'},{left:'85%',top:'12%'}],
+    3:[{left:'8%',top:'40%'},{left:'50%',top:'2%'},{left:'92%',top:'40%'}],
+    4:[{left:'8%',top:'50%'},{left:'22%',top:'5%'},{left:'78%',top:'5%'},{left:'92%',top:'50%'}],
+    5:[{left:'5%',top:'58%'},{left:'12%',top:'10%'},{left:'50%',top:'0%'},{left:'88%',top:'10%'},{left:'95%',top:'58%'}],
+  };
+  const seats=SEAT_MAP[orderedOthers.length]||SEAT_MAP[1];
+
+  const advBtn=(label,fn)=><button onClick={fn} style={{padding:"6px 18px",borderRadius:16,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>{label}</button>;
+
+  return<div style={{...BG,padding:0,display:"flex",flexDirection:"column",height:"100vh",overflow:"hidden"}}>
+    {/* ═══════ TOP BAR ═══════ */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px 2px",flexShrink:0}}>
       <div style={{fontSize:12,fontWeight:900,background:"linear-gradient(90deg,#c9a227,#f5e07a)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:2}}>♠ SCARNEY</div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <div style={{fontSize:8,color:"#555"}}>R{gs.round}・{code}</div>
-        <div style={{background:myChips===0?"rgba(200,40,40,0.15)":"rgba(144,238,144,0.1)",border:myChips===0?"1px solid rgba(200,40,40,0.3)":"1px solid rgba(144,238,144,0.2)",borderRadius:8,padding:"4px 10px"}}>
-          <span style={{fontSize:8,color:myChips===0?"#c04040":"#5a8a5e",fontWeight:600}}>STACK </span>
-          <span style={{fontSize:14,fontWeight:900,color:myChips===0?"#e74c3c":"#90ee90",fontFamily:"Georgia"}}>{myChips.toLocaleString()}</span>
+        <div style={{background:myChips===0?"rgba(200,40,40,0.15)":"rgba(144,238,144,0.08)",border:myChips===0?"1px solid rgba(200,40,40,0.3)":"1px solid rgba(144,238,144,0.15)",borderRadius:8,padding:"3px 8px"}}>
+          <span style={{fontSize:7,color:myChips===0?"#c04040":"#5a8a5e",fontWeight:600}}>STACK </span>
+          <span style={{fontSize:13,fontWeight:900,color:myChips===0?"#e74c3c":"#90ee90",fontFamily:"Georgia"}}>{myChips.toLocaleString()}</span>
         </div>
       </div>
     </div>
 
-    {/* ═══════ TABLE ═══════ */}
-    <div style={{flex:1,display:"flex",flexDirection:"column",gap:4}}>
+    {/* ═══════ TABLE AREA (circular layout) ═══════ */}
+    <div style={{flex:1,position:"relative",margin:"0 4px",minHeight:0}}>
 
-      {/* Opponents around table */}
-      <div style={{display:"flex",justifyContent:"center",gap:6,flexWrap:"wrap",padding:"0 4px"}}>
-        {others.map(p=>{
-          const dn=gs.down&&gs.down[p.id];const fd=gs.folded&&gs.folded[p.id];
-          const hd=(gs.hands&&gs.hands[p.id])||[];const dsc=(gs.disc&&gs.disc[p.id])||[];
-          const wn=(gs.results&&gs.results.w&&gs.results.w[p.id])||0;
-          const isActor=isBetting&&gs.betting.actorId===p.id;
-          const pBet=isBetting?(gs.betting.bets[p.id]||0):0;
-          const pAllIn=isBetting&&gs.betting.allIn&&gs.betting.allIn[p.id];
-          const isBtn2=gs.btn===players.indexOf(p);
-          const pChips=(room.chips&&room.chips[p.id])||0;
-          const canSee=isSD||showHands;
-          const pLow=hd.length>0?lowPts(hd):0;
-          const pEval=canSee&&hd.length>0&&topCards.length>0?evalHand([...hd,...topCards]):null;
-          return<div key={p.id} style={{background:isActor?"rgba(255,215,0,0.08)":"rgba(0,0,0,0.25)",borderRadius:10,padding:"6px 8px",border:isActor?"1.5px solid rgba(255,215,0,0.4)":fd?"1px solid rgba(100,100,100,0.2)":"1px solid rgba(255,255,255,0.05)",minWidth:100,flex:"1 1 100px",maxWidth:180,backdropFilter:"blur(4px)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <div style={{width:22,height:22,borderRadius:"50%",background:fd?"#333":dn?"#5a2020":"linear-gradient(135deg,#2a4a3a,#1a3a2a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#8aaa8e",border:isBtn2?"2px solid #d4af37":"none"}}>{p.name[0]}</div>
-                <span style={{fontSize:9,fontWeight:700,color:fd?"#555":dn?"#c04040":"#ccc"}}>{p.cpu?"🤖 ":""}{p.name}{dn?"💀":fd?"✕":""}</span>
-              </div>
-              <span style={{fontSize:9,fontWeight:700,color:pChips===0?"#c04040":"#7aba7e"}}>{pChips.toLocaleString()}</span>
-            </div>
-            {pAllIn&&<div style={{fontSize:8,color:"#c0392b",textAlign:"center",marginBottom:2,fontWeight:700}}>ALL-IN {pBet>0?pBet.toLocaleString():""}</div>}
-            {!pAllIn&&pBet>0&&<div style={{fontSize:8,color:"#d4af37",textAlign:"center",marginBottom:2}}>BET {pBet.toLocaleString()}</div>}
-            <div style={{display:"flex",gap:2,justifyContent:"center",flexWrap:"wrap"}}>
-              {fd?<div style={{fontSize:8,color:"#444",padding:"4px 0"}}>FOLD</div>
-              :canSee?hd.map((c,i)=><span key={i}>{crd(c,{mini:true,dim:dn})}</span>)
-              :Array(hd.length).fill(null).map((_,i)=><span key={i}>{crd(null,{faceDown:true,mini:true})}</span>)}
-              {canSee&&!fd&&dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,mini:true})}</span>)}
-            </div>
-            {canSee&&!fd&&!dn&&pEval&&pEval.rank>=0&&<div style={{fontSize:11,color:"#e8e4d9",textAlign:"center",marginTop:4,padding:"4px 6px",borderRadius:6,background:wn>0?"rgba(255,215,0,0.08)":"rgba(0,0,0,0.2)",fontWeight:700}}>{pEval.name}・<span style={{color:"#64b4ff"}}>{pLow}pt</span>{wn>0&&<strong style={{color:"#ffd700"}}> +{wn.toLocaleString()}</strong>}</div>}
-          </div>;
-        })}
-      </div>
+      {/* Green felt oval table */}
+      <div style={{position:"absolute",top:"18%",left:"8%",right:"8%",bottom:"22%",borderRadius:"50%",background:"radial-gradient(ellipse at 50% 45%,#1b6b3a,#145a2e 35%,#0d4a22 60%,#072e14 80%,#041a0b)",border:"3px solid #1a5028",boxShadow:"inset 0 0 50px rgba(0,0,0,0.5),inset 0 2px 0 rgba(255,255,255,0.02),0 8px 32px rgba(0,0,0,0.7),0 0 0 6px rgba(10,26,16,0.8),0 0 0 8px rgba(26,80,40,0.3)"}}/>
 
-      {/* Green felt table */}
-      <div style={{background:"radial-gradient(ellipse at 50% 45%,#1b6b3a,#145a2e 40%,#0d4a22 65%,#072e14 85%,#041a0b)",borderRadius:24,padding:"14px 12px",border:"2.5px solid #1e5a30",boxShadow:"inset 0 0 40px rgba(0,0,0,0.4),inset 0 2px 0 rgba(255,255,255,0.03),0 4px 24px rgba(0,0,0,0.6)",position:"relative",minHeight:140}}>
+      {/* Table inner content (centered on felt) */}
+      <div style={{position:"absolute",top:"18%",left:"8%",right:"8%",bottom:"22%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none",zIndex:2}}>
 
-        {/* Phase progress bar */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,marginBottom:10}}>
-          {PH_LIST.map((p,i)=>{const ci=PH_LIST.indexOf(gs.phase),pi=PH_LIST.indexOf(p),on=ci>=pi,cur=ci===pi;return<div key={p} style={{display:"flex",alignItems:"center"}}>{i>0&&<div style={{width:16,height:2,background:on?"rgba(240,208,96,0.5)":"rgba(255,255,255,0.06)"}}/>}<div style={{width:cur?8:6,height:cur?8:6,borderRadius:"50%",background:on?"#f0d060":"rgba(255,255,255,0.08)",boxShadow:cur?"0 0 8px rgba(240,208,96,0.6)":"none",transition:"all 0.3s"}}/></div>;})}
+        {/* Phase dots */}
+        <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:6}}>
+          {PH_LIST.map((p,i)=>{const ci=PH_LIST.indexOf(gs.phase),pi=PH_LIST.indexOf(p),on=ci>=pi,cur=ci===pi;return<div key={p} style={{display:"flex",alignItems:"center"}}>{i>0&&<div style={{width:14,height:1.5,background:on?"rgba(240,208,96,0.5)":"rgba(255,255,255,0.06)"}}/>}<div style={{width:cur?7:5,height:cur?7:5,borderRadius:"50%",background:on?"#f0d060":"rgba(255,255,255,0.08)",boxShadow:cur?"0 0 6px rgba(240,208,96,0.6)":"none",transition:"all 0.3s"}}/></div>;})}
         </div>
 
         {/* POT */}
-        <div style={{textAlign:"center",marginBottom:10}}>
-          <span style={{background:"rgba(0,0,0,0.35)",padding:"5px 20px",borderRadius:20,fontSize:11,color:"#c9a84c",fontWeight:700,letterSpacing:1,display:"inline-flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:10,opacity:0.7}}>POT</span>
-            <span style={{fontSize:18,color:"#f0d060",fontWeight:900,fontFamily:"Georgia"}}>{gs.pot.toLocaleString()}</span>
+        <div style={{marginBottom:6}}>
+          <span style={{background:"rgba(0,0,0,0.4)",padding:"4px 16px",borderRadius:16,fontSize:10,color:"#c9a84c",fontWeight:700,letterSpacing:1,display:"inline-flex",alignItems:"center",gap:5}}>
+            <span style={{fontSize:9,opacity:0.7}}>POT</span>
+            <span style={{fontSize:16,color:"#f0d060",fontWeight:900,fontFamily:"Georgia"}}>{gs.pot.toLocaleString()}</span>
           </span>
         </div>
 
         {/* Betting indicator */}
-        {(isBetting||showHands&&!isSD)&&<div style={{textAlign:"center",marginBottom:8}}>
-          {isBetting&&(isMyTurn?<span style={{background:"rgba(255,215,0,0.12)",padding:"4px 14px",borderRadius:12,fontSize:11,color:"#ffd700",fontWeight:700,border:"1px solid rgba(255,215,0,0.25)"}}>YOUR TURN{gs.betting.currentBet>0?" • Bet: "+gs.betting.currentBet.toLocaleString():""}</span>
-          :<span style={{background:"rgba(0,0,0,0.3)",padding:"4px 14px",borderRadius:12,fontSize:11,color:"#888"}}>⏳ {(players.find(p=>p.id===gs.betting.actorId)||{}).name||"?"}</span>)}
-          {showHands&&!isSD&&!isBetting&&<span style={{background:"rgba(100,180,255,0.08)",padding:"4px 14px",borderRadius:12,fontSize:11,color:"#64b4ff",fontWeight:700,border:"1px solid rgba(100,180,255,0.15)"}}>⚡ ALL-IN SHOWDOWN</span>}
+        {(isBetting||showHands&&!isSD)&&<div style={{marginBottom:5}}>
+          {isBetting&&(isMyTurn?<span style={{background:"rgba(255,215,0,0.12)",padding:"3px 10px",borderRadius:10,fontSize:10,color:"#ffd700",fontWeight:700,border:"1px solid rgba(255,215,0,0.25)"}}>YOUR TURN{gs.betting.currentBet>0?" • "+gs.betting.currentBet.toLocaleString():""}</span>
+          :<span style={{background:"rgba(0,0,0,0.3)",padding:"3px 10px",borderRadius:10,fontSize:10,color:"#888"}}>⏳ {(players.find(p=>p.id===gs.betting.actorId)||{}).name||"?"}</span>)}
+          {showHands&&!isSD&&!isBetting&&<span style={{background:"rgba(100,180,255,0.08)",padding:"3px 10px",borderRadius:10,fontSize:10,color:"#64b4ff",fontWeight:700,border:"1px solid rgba(100,180,255,0.15)"}}>⚡ ALL-IN</span>}
         </div>}
 
-        {/* Community cards - Top row */}
-        <div style={{display:"flex",gap:4,justifyContent:"center",marginBottom:6}}>
+        {/* Community cards */}
+        <div style={{display:"flex",gap:3,justifyContent:"center",marginBottom:3}}>
           {(gs.top||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}
         </div>
-        {/* Bottom row */}
-        <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+        <div style={{display:"flex",gap:3,justifyContent:"center"}}>
           {(gs.bot||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}
         </div>
 
-        {/* Dealer controls on table */}
-        <div style={{display:"flex",gap:6,justifyContent:"center",marginTop:10}}>
-          {canAdv&&gs.phase==="deal"&&<button onClick={onAdvance} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>FLOP ▶</button>}
-          {canAdv&&gs.phase==="flop"&&<button onClick={onAdvance} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>TURN ▶</button>}
-          {canAdv&&gs.phase==="turn"&&<button onClick={onAdvance} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>RIVER ▶</button>}
-          {isDlr&&!isSD&&!isBetting&&gs.phase==="river"&&<button onClick={onAdvance} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>SHOWDOWN ▶</button>}
-          {isDlr&&isSD&&<button onClick={onNext} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>NEXT ROUND ▶</button>}
+        {/* Dealer controls */}
+        <div style={{display:"flex",gap:5,justifyContent:"center",marginTop:6,pointerEvents:"auto"}}>
+          {canAdv&&gs.phase==="deal"&&advBtn("FLOP ▶",onAdvance)}
+          {canAdv&&gs.phase==="flop"&&advBtn("TURN ▶",onAdvance)}
+          {canAdv&&gs.phase==="turn"&&advBtn("RIVER ▶",onAdvance)}
+          {isDlr&&!isSD&&!isBetting&&gs.phase==="river"&&advBtn("SHOWDOWN ▶",onAdvance)}
+          {isDlr&&isSD&&advBtn("NEXT ▶",onNext)}
         </div>
       </div>
 
-      {/* ═══════ MY SEAT ═══════ */}
-      <div style={{background:myDn?"rgba(120,20,20,0.15)":myFold?"rgba(50,50,50,0.15)":"rgba(0,0,0,0.3)",borderRadius:14,padding:"8px 10px",border:isMyTurn?"2px solid rgba(255,215,0,0.5)":myDn?"1px solid rgba(120,20,20,0.3)":"1px solid rgba(255,255,255,0.05)",backdropFilter:"blur(4px)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#d4af37,#b8962e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#0a0a0a",border:gs.btn===players.findIndex(p=>p.id===myId)?"2px solid #fff":"none"}}>{name[0]||"?"}</div>
-            <div>
-              <div style={{fontSize:11,fontWeight:700,color:"#d4af37"}}>{name} <span style={{fontSize:8,color:"#666"}}>({myH.length})</span>{myDn?<span style={{color:"#c04040",fontSize:9}}> 💀{gs.reason&&gs.reason[myId]}</span>:myFold?<span style={{color:"#555",fontSize:9}}> FOLD</span>:""}</div>
-              {myH.length>0&&!myDn&&!myFold&&<div style={{fontSize:14,color:"#64b4ff",fontWeight:700,marginTop:2}}>Low: {myLow}pt{liveEval&&liveEval.rank>=0&&<span style={{marginLeft:8,color:"#e8e4d9"}}>• {liveEval.name}</span>}</div>}
+      {/* ═══════ OPPONENT SEATS (positioned around table) ═══════ */}
+      {orderedOthers.map((p,si)=>{
+        const pos=seats[si]||seats[0];
+        const dn=gs.down&&gs.down[p.id];const fd=gs.folded&&gs.folded[p.id];
+        const hd=(gs.hands&&gs.hands[p.id])||[];const dsc=(gs.disc&&gs.disc[p.id])||[];
+        const wn=(gs.results&&gs.results.w&&gs.results.w[p.id])||0;
+        const isActor=isBetting&&gs.betting.actorId===p.id;
+        const pBet=isBetting?(gs.betting.bets[p.id]||0):0;
+        const pAllIn=isBetting&&gs.betting.allIn&&gs.betting.allIn[p.id];
+        const isBtn2=gs.btn===players.indexOf(p);
+        const pChips=(room.chips&&room.chips[p.id])||0;
+        const canSee=isSD||showHands;
+        const pLow=hd.length>0?lowPts(hd):0;
+        const pEval=canSee&&hd.length>0&&topCards.length>0?evalHand([...hd,...topCards]):null;
+
+        return<div key={p.id} style={{position:"absolute",left:pos.left,top:pos.top,transform:"translate(-50%,-50%)",zIndex:3,width:110,textAlign:"center"}}>
+          {/* Avatar + name */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+            <div style={{position:"relative"}}>
+              <div style={{width:36,height:36,borderRadius:"50%",background:fd?"#333":dn?"#5a2020":isActor?"linear-gradient(135deg,#d4af37,#b8962e)":"linear-gradient(135deg,#2a4a3a,#1a3a2a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:isActor?"#0a0a0a":"#8aaa8e",border:isActor?"2.5px solid #ffd700":"2px solid rgba(255,255,255,0.1)",boxShadow:isActor?"0 0 12px rgba(255,215,0,0.4)":"0 2px 8px rgba(0,0,0,0.5)",transition:"all 0.3s"}}>{p.name[0]}</div>
+              {isBtn2&&<div style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"#d4af37",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#0a0a0a",border:"1.5px solid #fff",boxShadow:"0 1px 4px rgba(0,0,0,0.5)"}}>D</div>}
+            </div>
+            <div style={{fontSize:9,fontWeight:700,color:fd?"#555":dn?"#c04040":"#ddd",whiteSpace:"nowrap",textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>{p.cpu?"🤖":"" }{p.name}{dn?" 💀":fd?" ✕":""}</div>
+            <div style={{fontSize:9,fontWeight:700,color:pChips===0?"#c04040":"#7aba7e",textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>{pChips.toLocaleString()}</div>
+            {pAllIn&&<div style={{fontSize:7,color:"#ff4444",fontWeight:800,textShadow:"0 0 6px rgba(255,0,0,0.3)"}}>ALL-IN</div>}
+            {!pAllIn&&pBet>0&&<div style={{fontSize:7,color:"#f0d060",fontWeight:700}}>{pBet.toLocaleString()}</div>}
+          </div>
+          {/* Cards */}
+          <div style={{display:"flex",gap:1,justifyContent:"center",flexWrap:"wrap",marginTop:2}}>
+            {fd?<div style={{fontSize:7,color:"#444"}}>FOLD</div>
+            :canSee?hd.map((c,i)=><span key={i}>{crd(c,{mini:true,dim:dn})}</span>)
+            :Array(hd.length).fill(null).map((_,i)=><span key={i}>{crd(null,{faceDown:true,mini:true})}</span>)}
+            {canSee&&!fd&&dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,mini:true})}</span>)}
+          </div>
+          {/* Showdown result */}
+          {canSee&&!fd&&!dn&&pEval&&pEval.rank>=0&&<div style={{fontSize:8,color:"#e8e4d9",marginTop:2,padding:"2px 4px",borderRadius:4,background:wn>0?"rgba(255,215,0,0.15)":"rgba(0,0,0,0.3)",fontWeight:700,textShadow:"0 1px 2px rgba(0,0,0,0.5)"}}>{pEval.name}<br/><span style={{color:"#64b4ff"}}>{pLow}pt</span>{wn>0&&<span style={{color:"#ffd700"}}> +{wn.toLocaleString()}</span>}</div>}
+        </div>;
+      })}
+
+      {/* ═══════ MY SEAT (bottom center) ═══════ */}
+      <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",zIndex:4,width:"100%",maxWidth:360,padding:"0 8px",boxSizing:"border-box"}}>
+        <div style={{background:myDn?"rgba(120,20,20,0.2)":myFold?"rgba(50,50,50,0.2)":"rgba(0,0,0,0.4)",borderRadius:14,padding:"6px 10px",border:isMyTurn?"2px solid rgba(255,215,0,0.5)":myDn?"1px solid rgba(120,20,20,0.3)":"1px solid rgba(255,255,255,0.06)",backdropFilter:"blur(8px)",boxShadow:"0 -4px 20px rgba(0,0,0,0.4)"}}>
+          {/* My info row */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{position:"relative"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#d4af37,#b8962e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#0a0a0a",border:isMyTurn?"2.5px solid #ffd700":"2px solid rgba(255,255,255,0.2)",boxShadow:isMyTurn?"0 0 12px rgba(255,215,0,0.4)":"none"}}>{name[0]||"?"}</div>
+                {gs.btn===myIdx&&<div style={{position:"absolute",top:-3,right:-3,width:14,height:14,borderRadius:"50%",background:"#d4af37",display:"flex",alignItems:"center",justifyContent:"center",fontSize:6,fontWeight:900,color:"#0a0a0a",border:"1.5px solid #fff"}}>D</div>}
+              </div>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:"#d4af37"}}>{name} <span style={{fontSize:8,color:"#666"}}>({myH.length})</span>{myDn?<span style={{color:"#c04040",fontSize:9}}> 💀{gs.reason&&gs.reason[myId]}</span>:myFold?<span style={{color:"#555",fontSize:9}}> FOLD</span>:""}</div>
+                {myH.length>0&&!myDn&&!myFold&&<div style={{fontSize:12,color:"#64b4ff",fontWeight:700}}>Low: {myLow}pt{liveEval&&liveEval.rank>=0&&<span style={{marginLeft:6,color:"#e8e4d9",fontSize:11}}>• {liveEval.name}</span>}</div>}
+              </div>
             </div>
           </div>
-          {gs.btn===players.findIndex(p=>p.id===myId)&&<span style={{fontSize:8,background:"#d4af37",color:"#0a0a0a",padding:"1px 6px",borderRadius:4,fontWeight:800}}>BTN</span>}
+          {/* My cards */}
+          <div style={{display:"flex",gap:3,justifyContent:"center",flexWrap:"wrap",minHeight:60}}>
+            {myFold?<div style={{fontSize:12,color:"#444",padding:"16px 0"}}>FOLDED</div>
+            :<>{myH.map((c,i)=><span key={i}>{crd(c,{glow:isSD&&!myDn})}</span>)}{myDisc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true})}</span>)}</>}
+          </div>
+          {/* Showdown result */}
+          {isSD&&gs.results&&!myDn&&!myFold&&<div style={{textAlign:"center",marginTop:4,padding:"6px 10px",borderRadius:8,background:((gs.results.w&&gs.results.w[myId])||0)>0?"rgba(255,215,0,0.12)":"rgba(255,255,255,0.03)",border:((gs.results.w&&gs.results.w[myId])||0)>0?"1px solid rgba(255,215,0,0.25)":"1px solid rgba(255,255,255,0.05)"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#e8e4d9"}}>🏆 {gs.results.hi&&gs.results.hi[myId]?gs.results.hi[myId].name:"?"}</div>
+            <div style={{fontSize:12,fontWeight:700,color:"#64b4ff",marginTop:1}}>Low: {myLow}pt</div>
+            {((gs.results.w&&gs.results.w[myId])||0)>0&&<div style={{fontSize:16,fontWeight:900,color:"#ffd700",marginTop:2}}>+{(gs.results.w[myId]||0).toLocaleString()}</div>}
+          </div>}
         </div>
-        <div style={{display:"flex",gap:3,justifyContent:"center",flexWrap:"wrap",minHeight:70}}>
-          {myFold?<div style={{fontSize:12,color:"#444",padding:"20px 0"}}>FOLDED</div>
-          :<>{myH.map((c,i)=><span key={i}>{crd(c,{glow:isSD&&!myDn})}</span>)}{myDisc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true})}</span>)}</>}
-        </div>
-        {isSD&&gs.results&&!myDn&&!myFold&&<div style={{textAlign:"center",marginTop:6,padding:"8px 12px",borderRadius:10,background:((gs.results.w&&gs.results.w[myId])||0)>0?"rgba(255,215,0,0.12)":"rgba(255,255,255,0.03)",border:((gs.results.w&&gs.results.w[myId])||0)>0?"1px solid rgba(255,215,0,0.25)":"1px solid rgba(255,255,255,0.05)"}}>
-          <div style={{fontSize:16,fontWeight:800,color:"#e8e4d9"}}>🏆 {gs.results.hi&&gs.results.hi[myId]?gs.results.hi[myId].name:"?"}</div>
-          <div style={{fontSize:14,fontWeight:700,color:"#64b4ff",marginTop:2}}>Low: {myLow}pt</div>
-          {((gs.results.w&&gs.results.w[myId])||0)>0&&<div style={{fontSize:18,fontWeight:900,color:"#ffd700",marginTop:4}}>+{(gs.results.w[myId]||0).toLocaleString()}</div>}
-        </div>}
       </div>
+    </div>
 
+    {/* ═══════ BETTING UI ═══════ */}
+    {isMyTurn&&!myDn&&!myFold&&<div style={{flexShrink:0,padding:"4px 8px 2px",background:"rgba(0,0,0,0.5)",borderTop:"1px solid rgba(255,215,0,0.1)"}}>
+      {gs.betting.currentBet===0?<>
+        <div style={{display:"flex",gap:5,marginBottom:6}}>
+          <button onClick={()=>onBetAct("check")} style={{flex:1,padding:"9px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CHECK ✓</button>
+          <button onClick={()=>onBetAct("bet",myChips)} style={{padding:"9px 14px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
+          <button onClick={()=>onBetAct("fold")} style={{padding:"9px 14px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
+        </div>
+        <div style={{display:"flex",gap:3,marginBottom:4,flexWrap:"wrap",justifyContent:"center"}}>
+          {[100,200,500,1000,2000].filter(v=>v<=myChips).map(v=><button key={v} onClick={()=>setBetAmt(v)} style={{padding:"3px 9px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.04)",color:betAmt===v?"#0a0a0a":"#888",border:"none",cursor:"pointer"}}>{v>=1000?(v/1000)+"K":v}</button>)}
+          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),100))} style={{padding:"3px 8px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
+        </div>
+        <div style={{display:"flex",gap:5}}>
+          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"7px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:14,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
+          <button onClick={()=>onBetAct("bet",Math.min(betAmt,myChips))} style={{padding:"7px 20px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>BET</button>
+        </div>
+      </>:toCall>=myChips?<>
+        <div style={{display:"flex",gap:5}}>
+          <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"11px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.4)",letterSpacing:1}}>ALL-IN {myChips.toLocaleString()}</button>
+          <button onClick={()=>onBetAct("fold")} style={{padding:"11px 16px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
+        </div>
+      </>:<>
+        <div style={{display:"flex",gap:5,marginBottom:6}}>
+          <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"9px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CALL {toCall.toLocaleString()}</button>
+          <button onClick={()=>onBetAct("raise",myChips+myBetIn)} style={{padding:"9px 14px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
+          <button onClick={()=>onBetAct("fold")} style={{padding:"9px 14px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
+        </div>
+        <div style={{display:"flex",gap:3,marginBottom:4,flexWrap:"wrap",justifyContent:"center"}}>
+          <button onClick={()=>setBetAmt(minRaise)} style={{padding:"3px 8px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>MIN</button>
+          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),minRaise))} style={{padding:"3px 8px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
+          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(gs.pot,minRaise))} style={{padding:"3px 8px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>POT</button>}
+        </div>
+        <div style={{display:"flex",gap:5}}>
+          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"7px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:14,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
+          <button onClick={()=>onBetAct("raise",Math.min(Math.max(betAmt,minRaise),maxBet))} disabled={myChips<=toCall} style={{padding:"7px 20px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",opacity:myChips<=toCall?0.3:1}}>RAISE</button>
+        </div>
+      </>}
+    </div>}
 
-      {/* ═══════ BETTING UI ═══════ */}
-      {isMyTurn&&!myDn&&!myFold&&<div style={{background:"rgba(0,0,0,0.35)",borderRadius:12,padding:10,border:"1px solid rgba(255,215,0,0.15)"}}>
-        {gs.betting.currentBet===0?<>
-          <div style={{display:"flex",gap:6,marginBottom:8}}>
-            <button onClick={()=>onBetAct("check")} style={{flex:1,padding:"10px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CHECK ✓</button>
-            <button onClick={()=>onBetAct("bet",myChips)} style={{padding:"10px 16px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
-            <button onClick={()=>onBetAct("fold")} style={{padding:"10px 16px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
-          </div>
-          <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",justifyContent:"center"}}>
-            {[100,200,500,1000,2000].filter(v=>v<=myChips).map(v=><button key={v} onClick={()=>setBetAmt(v)} style={{padding:"4px 10px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.04)",color:betAmt===v?"#0a0a0a":"#888",border:"none",cursor:"pointer"}}>{v>=1000?(v/1000)+"K":v}</button>)}
-            {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),100))} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
-            <button onClick={()=>onBetAct("bet",Math.min(betAmt,myChips))} style={{padding:"8px 22px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>BET</button>
-          </div>
-        </>:toCall>=myChips?<>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"12px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.4)",letterSpacing:1}}>ALL-IN {myChips.toLocaleString()}</button>
-            <button onClick={()=>onBetAct("fold")} style={{padding:"12px 18px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
-          </div>
-        </>:<>
-          <div style={{display:"flex",gap:6,marginBottom:8}}>
-            <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"10px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CALL {toCall.toLocaleString()}</button>
-            <button onClick={()=>onBetAct("raise",myChips+myBetIn)} style={{padding:"10px 16px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
-            <button onClick={()=>onBetAct("fold")} style={{padding:"10px 16px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
-          </div>
-          <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",justifyContent:"center"}}>
-            <button onClick={()=>setBetAmt(minRaise)} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>MIN</button>
-            {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),minRaise))} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
-            {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(gs.pot,minRaise))} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>POT</button>}
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
-            <button onClick={()=>onBetAct("raise",Math.min(Math.max(betAmt,minRaise),maxBet))} disabled={myChips<=toCall} style={{padding:"8px 22px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",opacity:myChips<=toCall?0.3:1}}>RAISE</button>
-          </div>
-        </>}
-      </div>}
-
-      {/* Log */}
-      <div ref={logR} style={{background:"rgba(0,0,0,0.3)",borderRadius:8,padding:5,maxHeight:80,overflowY:"auto",fontSize:8,lineHeight:1.6,color:"#4a6a4e"}}>
+    {/* ═══════ LOG ═══════ */}
+    <div style={{flexShrink:0,padding:"2px 8px 0"}}>
+      <div ref={logR} style={{background:"rgba(0,0,0,0.3)",borderRadius:6,padding:4,maxHeight:56,overflowY:"auto",fontSize:7,lineHeight:1.5,color:"#4a6a4e"}}>
         {(gs.log||[]).map((l,i)=><div key={i} style={{color:l.includes("💀")?"#c04040":l.includes("🏆")?"#d4af37":l.startsWith("──")?"#8aaa8e":l.includes("🎲")?"#7aba7e":l.includes("⚡")?"#64b4ff":l.includes("💰")?"#b8962e":"#4a6a4e",fontWeight:l.includes("🏆")||l.includes("💀")?700:400}}>{l}</div>)}
       </div>
     </div>
-    <div style={{textAlign:"center",padding:"6px 0"}}><button onClick={onLeave} style={{background:"none",border:"none",color:"#333",fontSize:9,cursor:"pointer"}}>EXIT</button></div>
+    <div style={{textAlign:"center",padding:"3px 0 4px",flexShrink:0}}><button onClick={onLeave} style={{background:"none",border:"none",color:"#333",fontSize:8,cursor:"pointer"}}>EXIT</button></div>
   </div>;
 }
