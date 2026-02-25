@@ -341,14 +341,14 @@ export default function Scarney(){
   const orderedOthers=[];
   for(let i=1;i<n;i++)orderedOthers.push(players[(myIdx+i)%n]);
 
-  // Seat positions for opponents around the table (percentages)
-  // Format: {left, top} — will be centered with transform
+  // Seat positions — KKPoker vertical oval layout
+  // My seat = bottom center. Others clockwise: bottom-left → left → top → right → bottom-right
   const SEAT_MAP={
-    1:[{left:'50%',top:'5%'}],
-    2:[{left:'15%',top:'12%'},{left:'85%',top:'12%'}],
-    3:[{left:'8%',top:'40%'},{left:'50%',top:'2%'},{left:'92%',top:'40%'}],
-    4:[{left:'8%',top:'50%'},{left:'22%',top:'5%'},{left:'78%',top:'5%'},{left:'92%',top:'50%'}],
-    5:[{left:'5%',top:'58%'},{left:'12%',top:'10%'},{left:'50%',top:'0%'},{left:'88%',top:'10%'},{left:'95%',top:'58%'}],
+    1:[{left:'50%',top:'4%'}],
+    2:[{left:'8%',top:'38%'},{left:'92%',top:'38%'}],
+    3:[{left:'5%',top:'55%'},{left:'50%',top:'2%'},{left:'95%',top:'55%'}],
+    4:[{left:'4%',top:'58%'},{left:'18%',top:'10%'},{left:'82%',top:'10%'},{left:'96%',top:'58%'}],
+    5:[{left:'3%',top:'64%'},{left:'4%',top:'26%'},{left:'50%',top:'2%'},{left:'96%',top:'26%'},{left:'97%',top:'64%'}],
   };
   const seats=SEAT_MAP[orderedOthers.length]||SEAT_MAP[1];
 
@@ -370,11 +370,14 @@ export default function Scarney(){
     {/* ═══════ TABLE AREA (circular layout) ═══════ */}
     <div style={{flex:1,position:"relative",margin:"0 4px",minHeight:0}}>
 
-      {/* Green felt oval table */}
-      <div style={{position:"absolute",top:"18%",left:"8%",right:"8%",bottom:"22%",borderRadius:"50%",background:"radial-gradient(ellipse at 50% 45%,#1b6b3a,#145a2e 35%,#0d4a22 60%,#072e14 80%,#041a0b)",border:"3px solid #1a5028",boxShadow:"inset 0 0 50px rgba(0,0,0,0.5),inset 0 2px 0 rgba(255,255,255,0.02),0 8px 32px rgba(0,0,0,0.7),0 0 0 6px rgba(10,26,16,0.8),0 0 0 8px rgba(26,80,40,0.3)"}}/>
+      {/* Dark outer rail */}
+      <div style={{position:"absolute",top:"10%",left:"6%",right:"6%",bottom:"18%",borderRadius:"48%/50%",background:"linear-gradient(180deg,#1a2030,#0e1520 30%,#0a1018 70%,#1a2030)",boxShadow:"0 8px 32px rgba(0,0,0,0.8),inset 0 1px 0 rgba(255,255,255,0.05)"}}/>
+
+      {/* Green felt oval table (vertical) */}
+      <div style={{position:"absolute",top:"12%",left:"9%",right:"9%",bottom:"20%",borderRadius:"46%/50%",background:"radial-gradient(ellipse at 50% 45%,#1b6b3a,#145a2e 30%,#0d4a22 55%,#072e14 75%,#041a0b)",border:"2.5px solid #1a5028",boxShadow:"inset 0 0 60px rgba(0,0,0,0.4),inset 0 2px 0 rgba(255,255,255,0.02)"}}/>
 
       {/* Table inner content (centered on felt) */}
-      <div style={{position:"absolute",top:"18%",left:"8%",right:"8%",bottom:"22%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none",zIndex:2}}>
+      <div style={{position:"absolute",top:"12%",left:"9%",right:"9%",bottom:"20%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none",zIndex:2}}>
 
         {/* Phase dots */}
         <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:6}}>
