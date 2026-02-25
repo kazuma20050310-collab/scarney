@@ -386,45 +386,44 @@ export default function Scarney(){
       </div>
 
       {/* Green felt table */}
-      <div style={{background:"radial-gradient(ellipse at 50% 50%,#1a5a32,#0f4025 50%,#0a3018 80%,#061a0e)",borderRadius:20,padding:"12px 10px",border:"3px solid #2a6a3e",boxShadow:"inset 0 0 30px rgba(0,0,0,0.5),0 0 20px rgba(10,48,24,0.5)",position:"relative",minHeight:140}}>
+      <div style={{background:"radial-gradient(ellipse at 50% 45%,#1b6b3a,#145a2e 40%,#0d4a22 65%,#072e14 85%,#041a0b)",borderRadius:24,padding:"14px 12px",border:"2.5px solid #1e5a30",boxShadow:"inset 0 0 40px rgba(0,0,0,0.4),inset 0 2px 0 rgba(255,255,255,0.03),0 4px 24px rgba(0,0,0,0.6)",position:"relative",minHeight:140}}>
 
-        {/* Phase indicator */}
-        <div style={{display:"flex",gap:3,marginBottom:8,justifyContent:"center"}}>
-          {PH_LIST.map(p=>{const on=PH_LIST.indexOf(gs.phase)>=PH_LIST.indexOf(p);return<div key={p} style={{padding:"2px 8px",borderRadius:10,fontSize:8,fontWeight:700,background:on?"rgba(212,175,55,0.2)":"rgba(0,0,0,0.2)",color:on?"#d4af37":"#2a4a3a",border:on?"1px solid rgba(212,175,55,0.3)":"1px solid rgba(0,0,0,0.2)"}}>{PH_JP[p]}</div>;})}
+        {/* Phase progress bar */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,marginBottom:10}}>
+          {PH_LIST.map((p,i)=>{const ci=PH_LIST.indexOf(gs.phase),pi=PH_LIST.indexOf(p),on=ci>=pi,cur=ci===pi;return<div key={p} style={{display:"flex",alignItems:"center"}}>{i>0&&<div style={{width:16,height:2,background:on?"rgba(240,208,96,0.5)":"rgba(255,255,255,0.06)"}}/>}<div style={{width:cur?8:6,height:cur?8:6,borderRadius:"50%",background:on?"#f0d060":"rgba(255,255,255,0.08)",boxShadow:cur?"0 0 8px rgba(240,208,96,0.6)":"none",transition:"all 0.3s"}}/></div>;})}
         </div>
 
         {/* POT */}
-        <div style={{textAlign:"center",marginBottom:8}}>
-          <span style={{background:"rgba(0,0,0,0.3)",padding:"4px 16px",borderRadius:20,fontSize:10,color:"#b8962e",fontWeight:700,letterSpacing:1}}>
-            POT <span style={{fontSize:16,color:"#f0d060",fontFamily:"Georgia"}}>{gs.pot.toLocaleString()}</span>
+        <div style={{textAlign:"center",marginBottom:10}}>
+          <span style={{background:"rgba(0,0,0,0.35)",padding:"5px 20px",borderRadius:20,fontSize:11,color:"#c9a84c",fontWeight:700,letterSpacing:1,display:"inline-flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:10,opacity:0.7}}>POT</span>
+            <span style={{fontSize:18,color:"#f0d060",fontWeight:900,fontFamily:"Georgia"}}>{gs.pot.toLocaleString()}</span>
           </span>
         </div>
 
         {/* Betting indicator */}
-        {(isBetting||showHands&&!isSD)&&<div style={{textAlign:"center",marginBottom:6}}>
-          {isBetting&&(isMyTurn?<span style={{background:"rgba(255,215,0,0.15)",padding:"3px 12px",borderRadius:10,fontSize:10,color:"#ffd700",fontWeight:700,border:"1px solid rgba(255,215,0,0.3)"}}>YOUR TURN{gs.betting.currentBet>0?" • Bet: "+gs.betting.currentBet.toLocaleString():""}</span>
-          :<span style={{background:"rgba(0,0,0,0.3)",padding:"3px 12px",borderRadius:10,fontSize:10,color:"#888"}}>⏳ {(players.find(p=>p.id===gs.betting.actorId)||{}).name||"?"}</span>)}
-          {showHands&&!isSD&&!isBetting&&<span style={{background:"rgba(100,180,255,0.1)",padding:"3px 12px",borderRadius:10,fontSize:10,color:"#64b4ff",fontWeight:700,border:"1px solid rgba(100,180,255,0.2)"}}>⚡ ALL-IN SHOWDOWN</span>}
+        {(isBetting||showHands&&!isSD)&&<div style={{textAlign:"center",marginBottom:8}}>
+          {isBetting&&(isMyTurn?<span style={{background:"rgba(255,215,0,0.12)",padding:"4px 14px",borderRadius:12,fontSize:11,color:"#ffd700",fontWeight:700,border:"1px solid rgba(255,215,0,0.25)"}}>YOUR TURN{gs.betting.currentBet>0?" • Bet: "+gs.betting.currentBet.toLocaleString():""}</span>
+          :<span style={{background:"rgba(0,0,0,0.3)",padding:"4px 14px",borderRadius:12,fontSize:11,color:"#888"}}>⏳ {(players.find(p=>p.id===gs.betting.actorId)||{}).name||"?"}</span>)}
+          {showHands&&!isSD&&!isBetting&&<span style={{background:"rgba(100,180,255,0.08)",padding:"4px 14px",borderRadius:12,fontSize:11,color:"#64b4ff",fontWeight:700,border:"1px solid rgba(100,180,255,0.15)"}}>⚡ ALL-IN SHOWDOWN</span>}
         </div>}
 
         {/* Community cards - Top row */}
-        <div style={{textAlign:"center",marginBottom:4}}>
-          <div style={{fontSize:7,color:"rgba(100,180,255,0.4)",fontWeight:600,marginBottom:2,letterSpacing:1}}>COMMUNITY</div>
-          <div style={{display:"flex",gap:3,justifyContent:"center"}}>{(gs.top||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}</div>
+        <div style={{display:"flex",gap:4,justifyContent:"center",marginBottom:6}}>
+          {(gs.top||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}
         </div>
         {/* Bottom row */}
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:7,color:"rgba(255,80,80,0.4)",fontWeight:600,marginBottom:2,letterSpacing:1}}>DISCARD</div>
-          <div style={{display:"flex",gap:3,justifyContent:"center"}}>{(gs.bot||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}</div>
+        <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+          {(gs.bot||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}
         </div>
 
         {/* Dealer controls on table */}
-        <div style={{display:"flex",gap:6,justifyContent:"center",marginTop:8}}>
-          {canAdv&&gs.phase==="deal"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>FLOP ▶</button>}
-          {canAdv&&gs.phase==="flop"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>TURN ▶</button>}
-          {canAdv&&gs.phase==="turn"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>RIVER ▶</button>}
-          {isDlr&&!isSD&&!isBetting&&gs.phase==="river"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>SHOWDOWN ▶</button>}
-          {isDlr&&isSD&&<button onClick={onNext} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>NEXT ROUND ▶</button>}
+        <div style={{display:"flex",gap:6,justifyContent:"center",marginTop:10}}>
+          {canAdv&&gs.phase==="deal"&&<button onClick={onAdvance} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>FLOP ▶</button>}
+          {canAdv&&gs.phase==="flop"&&<button onClick={onAdvance} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>TURN ▶</button>}
+          {canAdv&&gs.phase==="turn"&&<button onClick={onAdvance} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>RIVER ▶</button>}
+          {isDlr&&!isSD&&!isBetting&&gs.phase==="river"&&<button onClick={onAdvance} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>SHOWDOWN ▶</button>}
+          {isDlr&&isSD&&<button onClick={onNext} style={{padding:"8px 24px",borderRadius:20,background:"linear-gradient(145deg,#f0d060,#c9a84c)",color:"#1a1a0a",border:"none",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 10px rgba(240,208,96,0.3)",letterSpacing:1}}>NEXT ROUND ▶</button>}
         </div>
       </div>
 
