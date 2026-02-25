@@ -166,6 +166,38 @@ export default function Scarney(){
   const[queueCount,setQueueCount]=useState(0);
   const[searchTime,setSearchTime]=useState(0);
   const unR=useRef(null);const logR=useRef(null);const matchRef=useRef(null);const roomRef=useRef(null);
+  const audioCtx=useRef(null);
+  const getAudio=()=>{if(!audioCtx.current)try{audioCtx.current=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}return audioCtx.current;};
+
+  /* ═══════ SOUND EFFECTS ═══════ */
+  const playCardFlip=(count=1)=>{const ctx=getAudio();if(!ctx)return;
+    for(let i=0;i<count;i++)setTimeout(()=>{try{
+      const osc=ctx.createOscillator();const gain=ctx.createGain();const t=ctx.currentTime;
+      osc.type="sine";osc.frequency.setValueAtTime(1800,t);osc.frequency.exponentialRampToValueAtTime(600,t+0.06);
+      gain.gain.setValueAtTime(0.12,t);gain.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+      // noise burst for "card sliding" texture
+      const buf=ctx.createBuffer(1,ctx.sampleRate*0.04,ctx.sampleRate);const d=buf.getChannelData(0);
+      for(let j=0;j<d.length;j++)d[j]=(Math.random()*2-1)*0.08;
+      const noise=ctx.createBufferSource();noise.buffer=buf;const ng=ctx.createGain();
+      ng.gain.setValueAtTime(0.15,t);ng.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+      osc.connect(gain);gain.connect(ctx.destination);noise.connect(ng);ng.connect(ctx.destination);
+      osc.start(t);osc.stop(t+0.1);noise.start(t);noise.stop(t+0.06);
+    }catch(e){}},i*120);};
+
+  const playChipSound=()=>{const ctx=getAudio();if(!ctx)return;try{
+    const osc=ctx.createOscillator();const gain=ctx.createGain();const t=ctx.currentTime;
+    osc.type="triangle";osc.frequency.setValueAtTime(2400,t);osc.frequency.exponentialRampToValueAtTime(1200,t+0.05);
+    gain.gain.setValueAtTime(0.08,t);gain.gain.exponentialRampToValueAtTime(0.001,t+0.07);
+    osc.connect(gain);gain.connect(ctx.destination);osc.start(t);osc.stop(t+0.08);
+  }catch(e){}};
+
+  const playWinSound=()=>{const ctx=getAudio();if(!ctx)return;
+    [0,120,240].forEach((d,i)=>setTimeout(()=>{try{
+      const osc=ctx.createOscillator();const gain=ctx.createGain();const t=ctx.currentTime;
+      osc.type="sine";osc.frequency.setValueAtTime([800,1000,1200][i],t);
+      gain.gain.setValueAtTime(0.1,t);gain.gain.exponentialRampToValueAtTime(0.001,t+0.2);
+      osc.connect(gain);gain.connect(ctx.destination);osc.start(t);osc.stop(t+0.25);
+    }catch(e){}},d));};
 
   const isDlr=room?room.dealerId===myId:false;
   const gs=room?room.gameState:null;
@@ -212,10 +244,10 @@ export default function Scarney(){
 
   const onCreate=async()=>{if(!name.trim()){setErr("名前を入力");return;}setErr("");const c=rcode();const d={code:c,players:[{id:myId,name:name.trim()}],dealerId:myId,chips:{[myId]:stack},gameState:null,stack};setCode(c);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
   const onJoin=async()=>{if(!name.trim()){setErr("名前を入力");return;}if(!ji.trim()){setErr("コードを入力");return;}setErr("");const c=ji.trim().toUpperCase();const d=await getRoom(c);if(!d||!d.players){setErr("ルーム見つかりません");return;}if(d.gameState&&d.gameState.phase!=="showdown"&&!d.players.find(p=>p.id===myId)){setErr("ゲーム進行中");return;}if(d.players.length>=6&&!d.players.find(p=>p.id===myId)){setErr("満員");return;}if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=d.stack||10000;}setCode(c);setStack(d.stack||10000);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
-  const onStart=async()=>{if(!room||room.players.length<2)return;const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips);await upd(code,d,"game");};
-  const onAdvance=async()=>{if(!room||!gs||isBetting)return;const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);d.gameState=g;await upd(code,d);};
-  const onBetAct=async(action,amount)=>{if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;await upd(code,nr);};
-  const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});d.players.forEach(p=>{if((d.chips[p.id]||0)===0)d.chips[p.id]=d.stack||10000;});const nb=((d.gameState.btn||0)+1)%d.players.length;d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);await upd(code,d);};
+  const onStart=async()=>{if(!room||room.players.length<2)return;const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips);playCardFlip(3);await upd(code,d,"game");};
+  const onAdvance=async()=>{if(!room||!gs||isBetting)return;const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);const nc=g.phase==="flop"?3:g.phase==="turn"||g.phase==="river"?1:0;if(nc)playCardFlip(nc);if(g.phase==="showdown")playWinSound();d.gameState=g;await upd(code,d);};
+  const onBetAct=async(action,amount)=>{if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;if(action!=="fold")playChipSound();const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;if(ng.phase==="showdown")playWinSound();await upd(code,nr);};
+  const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});d.players.forEach(p=>{if((d.chips[p.id]||0)===0)d.chips[p.id]=d.stack||10000;});const nb=((d.gameState.btn||0)+1)%d.players.length;d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);playCardFlip(3);await upd(code,d);};
 
   const onSetStack=async v=>{setStack(v);if(room&&isDlr){const d=dc(room);d.stack=v;d.players.forEach(p=>d.chips[p.id]=v);await upd(code,d);}};
   const onLeave=async()=>{try{if(unR.current){unR.current();unR.current=null;}if(room){const d=dc(room);d.players=d.players.filter(p=>p.id!==myId);if(!d.players.length)await deleteRoom(code);else{if(d.dealerId===myId&&d.players.length)d.dealerId=d.players[0].id;await setRoom(code,d);}}clearSession();}catch(e){}setScr("home");setRS(null);setCode("");setErr("");};
