@@ -64,12 +64,12 @@ function allAliveAllIn(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<
 function startBetting(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return null;if(allAliveAllIn(gs,ps,chips))return null;const fid=findFirstActor(ps,gs.btn,gs);if(!fid)return null;return{currentBet:0,bets:{},acted:{},actorId:fid,minRaise:10};}
 
 function makeGame(ps,round,btn,chips){
-  const deck=makeDeck();const hands={},disc={},down={},reason={},folded={};let pot=0;const log=[];
+  const deck=makeDeck();const hands={},disc={},down={},reason={},folded={},totalIn={};let pot=0;const log=[];
   ps.forEach(p=>{hands[p.id]=deck.splice(0,6);disc[p.id]=[];down[p.id]=false;reason[p.id]="";folded[p.id]=false;
-    const ante=Math.min(ANTE,chips[p.id]||0);chips[p.id]-=ante;pot+=ante;});
+    const ante=Math.min(ANTE,chips[p.id]||0);chips[p.id]-=ante;pot+=ante;totalIn[p.id]=ante;});
   log.push("R"+(round||1)+" — BTN: "+ps[btn||0].name);
   log.push("💰 ボムポット "+ANTE+" × "+ps.length+" → "+pot);
-  return{deck,hands,disc,down,reason,folded,top:Array(6).fill(null),bot:Array(6).fill(null),phase:"deal",pot,round:round||1,btn:btn||0,betting:null,results:null,allInShow:false,log};
+  return{deck,hands,disc,down,reason,folded,totalIn,top:Array(6).fill(null),bot:Array(6).fill(null),phase:"deal",pot,round:round||1,btn:btn||0,betting:null,results:null,allInShow:false,log};
 }
 function openCards(gs,ps){
   const s=dc(gs);const n=s.phase==="deal"?3:s.phase==="flop"?2:s.phase==="turn"?1:0;if(!n)return s;
@@ -96,12 +96,12 @@ function doAdvancePhase(gs,ps,chips){
   s.allInShow=true;s.log.push("⚡ All-in公開");return s;
 }
 function doBetAction(gs,room,ps,pid,action,amount){
-  const s=dc(gs),r=dc(room);const pn=(ps.find(p=>p.id===pid)||{}).name||"?";const chips=r.chips;
+  const s=dc(gs),r=dc(room);const pn=(ps.find(p=>p.id===pid)||{}).name||"?";const chips=r.chips;if(!s.totalIn)s.totalIn={};
   if(action==="check"){s.betting.acted[pid]=true;s.log.push(pn+": チェック");}
   else if(action==="fold"){s.folded[pid]=true;s.log.push(pn+": フォールド");}
-  else if(action==="bet"){const amt=Math.min(amount,chips[pid]||0);s.betting.bets[pid]=amt;s.betting.currentBet=amt;s.betting.minRaise=amt;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=amt;s.pot+=amt;s.log.push(pn+": Bet "+amt+(chips[pid]===0?" AI":""));}
-  else if(action==="call"){const owed=Math.min(s.betting.currentBet-(s.betting.bets[pid]||0),chips[pid]||0);s.betting.bets[pid]=(s.betting.bets[pid]||0)+owed;s.betting.acted[pid]=true;chips[pid]-=owed;s.pot+=owed;s.log.push(pn+": Call "+owed+(chips[pid]===0?" AI":""));}
-  else if(action==="raise"){const already=s.betting.bets[pid]||0;const total=Math.min(amount,already+(chips[pid]||0));const pay=total-already;s.betting.minRaise=Math.max(total-s.betting.currentBet,s.betting.minRaise);s.betting.bets[pid]=total;s.betting.currentBet=total;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=pay;s.pot+=pay;s.log.push(pn+": Raise "+total+(chips[pid]===0?" AI":""));}
+  else if(action==="bet"){const amt=Math.min(amount,chips[pid]||0);s.betting.bets[pid]=amt;s.betting.currentBet=amt;s.betting.minRaise=amt;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=amt;s.pot+=amt;s.totalIn[pid]=(s.totalIn[pid]||0)+amt;s.log.push(pn+": Bet "+amt+(chips[pid]===0?" AI":""));}
+  else if(action==="call"){const owed=Math.min(s.betting.currentBet-(s.betting.bets[pid]||0),chips[pid]||0);s.betting.bets[pid]=(s.betting.bets[pid]||0)+owed;s.betting.acted[pid]=true;chips[pid]-=owed;s.pot+=owed;s.totalIn[pid]=(s.totalIn[pid]||0)+owed;s.log.push(pn+": Call "+owed+(chips[pid]===0?" AI":""));}
+  else if(action==="raise"){const already=s.betting.bets[pid]||0;const total=Math.min(amount,already+(chips[pid]||0));const pay=total-already;s.betting.minRaise=Math.max(total-s.betting.currentBet,s.betting.minRaise);s.betting.bets[pid]=total;s.betting.currentBet=total;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=pay;s.pot+=pay;s.totalIn[pid]=(s.totalIn[pid]||0)+pay;s.log.push(pn+": Raise "+total+(chips[pid]===0?" AI":""));}
   const alive=aliveIds(s,ps);
   if(alive.length<=1){s.betting=null;return{gs:doShowdown(s,ps),room:r};}
   if(allAliveAllIn(s,ps,chips)){s.betting=null;if(s.phase==="river"){s.log.push("⚡ All-in → SD");return{gs:doShowdown(s,ps),room:r};}s.allInShow=true;s.log.push("⚡ All-in公開");return{gs:s,room:r};}
@@ -119,15 +119,36 @@ function doShowdown(gs,ps){
   const act=ids.filter(id=>!s.folded[id]&&!s.down[id]);const w={};ids.forEach(id=>w[id]=0);
   if(!act.length){const busted=ids.filter(id=>s.down[id]&&!s.folded[id]);if(busted.length){const sh=Math.floor(s.pot/busted.length);busted.forEach(id=>w[id]=sh);s.log.push("全員バースト→折半");}else{const sh=Math.floor(s.pot/ids.length);ids.forEach(id=>w[id]=sh);s.log.push("返還");}}
   else if(act.length===1){w[act[0]]=s.pot;s.log.push("🏆"+((ps.find(p=>p.id===act[0])||{}).name||"?")+" +"+s.pot);}
-  else{const hiHalf=Math.floor(s.pot/2),loHalf=s.pot-hiHalf;
-    const mH=Math.max(...act.map(id=>hi[id].score));const hiWinners=act.filter(id=>hi[id].score===mH);
-    const mL=Math.min(...act.map(id=>lw[id]));const loWinners=mL===Infinity?hiWinners:act.filter(id=>lw[id]===mL);
-    const hiEach=Math.floor(hiHalf/hiWinners.length),hiRem=hiHalf-hiEach*hiWinners.length;
-    hiWinners.forEach((id,i)=>w[id]+=hiEach+(i===0?hiRem:0));
-    const loEach=Math.floor(loHalf/loWinners.length),loRem=loHalf-loEach*loWinners.length;
-    loWinners.forEach((id,i)=>w[id]+=loEach+(i===0?loRem:0));
-    s.log.push("🏆Hi: "+hiWinners.map(id=>(ps.find(p=>p.id===id)||{}).name||"?").join(",")+" "+hi[hiWinners[0]].name+(hiWinners.length>1?" (÷"+hiWinners.length+")":"")+" +"+(hiWinners.length>1?hiEach+"ea":hiHalf));
-    s.log.push("🏆Lo: "+loWinners.map(id=>(ps.find(p=>p.id===id)||{}).name||"?").join(",")+" "+(mL===Infinity?"—":mL+"pt")+(loWinners.length>1?" (÷"+loWinners.length+")":"")+" +"+(loWinners.length>1?loEach+"ea":loHalf));}
+  else{
+    /* ── Side pot calculation ── */
+    const tin=s.totalIn||{};ids.forEach(id=>{if(!tin[id])tin[id]=0;});
+    const levels=[...new Set(ids.map(id=>tin[id]))].sort((a,b)=>a-b).filter(v=>v>0);
+    let prev=0;
+    for(const lv of levels){
+      const elig=ids.filter(id=>tin[id]>=lv);
+      const potSz=elig.length*(lv-prev);
+      if(potSz<=0){prev=lv;continue;}
+      const eligAct=elig.filter(id=>act.includes(id));
+      if(!eligAct.length){prev=lv;continue;}
+      const hiHalf=Math.floor(potSz/2),loHalf=potSz-hiHalf;
+      const mH=Math.max(...eligAct.map(id=>hi[id].score));const hiW=eligAct.filter(id=>hi[id].score===mH);
+      const mL=Math.min(...eligAct.map(id=>lw[id]));const loW=mL===Infinity?hiW:eligAct.filter(id=>lw[id]===mL);
+      const hE=Math.floor(hiHalf/hiW.length),hR=hiHalf-hE*hiW.length;
+      hiW.forEach((id,i)=>w[id]+=hE+(i===0?hR:0));
+      const lE=Math.floor(loHalf/loW.length),lR=loHalf-lE*loW.length;
+      loW.forEach((id,i)=>w[id]+=lE+(i===0?lR:0));
+      if(levels.length>1)s.log.push("🏆Pot(~"+lv+"): Hi "+hiW.map(id=>(ps.find(p=>p.id===id)||{}).name).join(",")+" +"+hiHalf+" / Lo "+loW.map(id=>(ps.find(p=>p.id===id)||{}).name).join(",")+" +"+loHalf);
+      prev=lv;
+    }
+    if(levels.length<=1){
+      const hiW=act.filter(id=>hi[id].score===Math.max(...act.map(x=>hi[x].score)));
+      const mL=Math.min(...act.map(id=>lw[id]));const loW=mL===Infinity?hiW:act.filter(id=>lw[id]===mL);
+      s.log.push("🏆Hi: "+hiW.map(id=>(ps.find(p=>p.id===id)||{}).name).join(",")+" "+hi[hiW[0]].name+(hiW.length>1?" (÷"+hiW.length+")":""));
+      s.log.push("🏆Lo: "+loW.map(id=>(ps.find(p=>p.id===id)||{}).name).join(",")+" "+(mL===Infinity?"—":mL+"pt")+(loW.length>1?" (÷"+loW.length+")":""));
+    }
+    /* log per-player winnings */
+    ids.forEach(id=>{if(w[id]>0)s.log.push("  "+((ps.find(p=>p.id===id)||{}).name||"?")+" → +"+w[id].toLocaleString());});
+  }
   s.results={hi,lw,w};return s;
 }
 
