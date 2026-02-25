@@ -345,10 +345,10 @@ export default function Scarney(){
   // My seat = bottom center. Others clockwise: bottom-left → left → top → right → bottom-right
   const SEAT_MAP={
     1:[{left:'50%',top:'4%'}],
-    2:[{left:'8%',top:'38%'},{left:'92%',top:'38%'}],
-    3:[{left:'5%',top:'55%'},{left:'50%',top:'2%'},{left:'95%',top:'55%'}],
-    4:[{left:'4%',top:'58%'},{left:'18%',top:'10%'},{left:'82%',top:'10%'},{left:'96%',top:'58%'}],
-    5:[{left:'3%',top:'64%'},{left:'4%',top:'26%'},{left:'50%',top:'2%'},{left:'96%',top:'26%'},{left:'97%',top:'64%'}],
+    2:[{left:'16%',top:'38%'},{left:'84%',top:'38%'}],
+    3:[{left:'14%',top:'55%'},{left:'50%',top:'2%'},{left:'86%',top:'55%'}],
+    4:[{left:'13%',top:'58%'},{left:'22%',top:'10%'},{left:'78%',top:'10%'},{left:'87%',top:'58%'}],
+    5:[{left:'12%',top:'64%'},{left:'13%',top:'26%'},{left:'50%',top:'2%'},{left:'87%',top:'26%'},{left:'88%',top:'64%'}],
   };
   const seats=SEAT_MAP[orderedOthers.length]||SEAT_MAP[1];
 
