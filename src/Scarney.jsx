@@ -58,10 +58,10 @@ function cpuDecide(gs,room,pid){
 }
 
 function aliveIds(gs,ps){return ps.filter(p=>!gs.folded[p.id]&&!gs.down[p.id]).map(p=>p.id);}
-function findFirstActor(ps,btnIdx,gs){const n=ps.length;for(let i=1;i<=n;i++){const p=ps[(btnIdx+i)%n];if(!gs.folded[p.id]&&!gs.down[p.id])return p.id;}return null;}
-function findNextActor(ps,curId,gs){const ids=ps.map(p=>p.id);const ci=ids.indexOf(curId);const n=ids.length;for(let i=1;i<n;i++){const id=ids[(ci+i)%n];if(gs.folded[id]||gs.down[id])continue;if(!gs.betting.acted[id]||(gs.betting.bets[id]||0)<gs.betting.currentBet)return id;}return null;}
+function findFirstActor(ps,btnIdx,gs,chips){const n=ps.length;for(let i=1;i<=n;i++){const p=ps[(btnIdx+i)%n];if(!gs.folded[p.id]&&!gs.down[p.id]&&(chips[p.id]||0)>0)return p.id;}return null;}
+function findNextActor(ps,curId,gs){const ids=ps.map(p=>p.id);const ci=ids.indexOf(curId);const n=ids.length;for(let i=1;i<n;i++){const id=ids[(ci+i)%n];if(gs.folded[id]||gs.down[id])continue;if(gs.betting.allIn&&gs.betting.allIn[id])continue;if(!gs.betting.acted[id]||(gs.betting.bets[id]||0)<gs.betting.currentBet)return id;}return null;}
 function allAliveAllIn(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return true;return alive.every(id=>(chips[id]||0)===0);}
-function startBetting(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return null;if(allAliveAllIn(gs,ps,chips))return null;const fid=findFirstActor(ps,gs.btn,gs);if(!fid)return null;return{currentBet:0,bets:{},acted:{},actorId:fid,minRaise:10};}
+function startBetting(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return null;if(allAliveAllIn(gs,ps,chips))return null;const canAct=alive.filter(id=>(chips[id]||0)>0);if(canAct.length<1)return null;const fid=findFirstActor(ps,gs.btn,gs,chips);if(!fid)return null;const ai={};alive.forEach(id=>{if((chips[id]||0)===0)ai[id]=true;});return{currentBet:0,bets:{},acted:{},allIn:ai,actorId:fid,minRaise:10};}
 
 function makeGame(ps,round,btn,chips){
   const deck=makeDeck();const hands={},disc={},down={},reason={},folded={},totalIn={};let pot=0;const log=[];
@@ -96,12 +96,12 @@ function doAdvancePhase(gs,ps,chips){
   s.allInShow=true;s.log.push("⚡ All-in公開");return s;
 }
 function doBetAction(gs,room,ps,pid,action,amount){
-  const s=dc(gs),r=dc(room);const pn=(ps.find(p=>p.id===pid)||{}).name||"?";const chips=r.chips;if(!s.totalIn)s.totalIn={};
+  const s=dc(gs),r=dc(room);const pn=(ps.find(p=>p.id===pid)||{}).name||"?";const chips=r.chips;if(!s.totalIn)s.totalIn={};if(!s.betting.allIn)s.betting.allIn={};
   if(action==="check"){s.betting.acted[pid]=true;s.log.push(pn+": チェック");}
   else if(action==="fold"){s.folded[pid]=true;s.log.push(pn+": フォールド");}
-  else if(action==="bet"){const amt=Math.min(amount,chips[pid]||0);s.betting.bets[pid]=amt;s.betting.currentBet=amt;s.betting.minRaise=amt;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=amt;s.pot+=amt;s.totalIn[pid]=(s.totalIn[pid]||0)+amt;s.log.push(pn+": Bet "+amt+(chips[pid]===0?" AI":""));}
-  else if(action==="call"){const owed=Math.min(s.betting.currentBet-(s.betting.bets[pid]||0),chips[pid]||0);s.betting.bets[pid]=(s.betting.bets[pid]||0)+owed;s.betting.acted[pid]=true;chips[pid]-=owed;s.pot+=owed;s.totalIn[pid]=(s.totalIn[pid]||0)+owed;s.log.push(pn+": Call "+owed+(chips[pid]===0?" AI":""));}
-  else if(action==="raise"){const already=s.betting.bets[pid]||0;const total=Math.min(amount,already+(chips[pid]||0));const pay=total-already;s.betting.minRaise=Math.max(total-s.betting.currentBet,s.betting.minRaise);s.betting.bets[pid]=total;s.betting.currentBet=total;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=pay;s.pot+=pay;s.totalIn[pid]=(s.totalIn[pid]||0)+pay;s.log.push(pn+": Raise "+total+(chips[pid]===0?" AI":""));}
+  else if(action==="bet"){const amt=Math.min(amount,chips[pid]||0);s.betting.bets[pid]=amt;s.betting.currentBet=amt;s.betting.minRaise=amt;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=amt;s.pot+=amt;s.totalIn[pid]=(s.totalIn[pid]||0)+amt;if(chips[pid]===0){s.betting.allIn[pid]=true;s.log.push(pn+": Bet "+amt+" ALL-IN");}else s.log.push(pn+": Bet "+amt);}
+  else if(action==="call"){const owed=Math.min(s.betting.currentBet-(s.betting.bets[pid]||0),chips[pid]||0);s.betting.bets[pid]=(s.betting.bets[pid]||0)+owed;s.betting.acted[pid]=true;chips[pid]-=owed;s.pot+=owed;s.totalIn[pid]=(s.totalIn[pid]||0)+owed;if(chips[pid]===0){s.betting.allIn[pid]=true;s.log.push(pn+": Call "+owed+" ALL-IN");}else s.log.push(pn+": Call "+owed);}
+  else if(action==="raise"){const already=s.betting.bets[pid]||0;const total=Math.min(amount,already+(chips[pid]||0));const pay=total-already;s.betting.minRaise=Math.max(total-s.betting.currentBet,s.betting.minRaise);s.betting.bets[pid]=total;s.betting.currentBet=total;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=pay;s.pot+=pay;s.totalIn[pid]=(s.totalIn[pid]||0)+pay;if(chips[pid]===0){s.betting.allIn[pid]=true;s.log.push(pn+": Raise "+total+" ALL-IN");}else s.log.push(pn+": Raise "+total);}
   const alive=aliveIds(s,ps);
   if(alive.length<=1){s.betting=null;return{gs:doShowdown(s,ps),room:r};}
   if(allAliveAllIn(s,ps,chips)){s.betting=null;if(s.phase==="river"){s.log.push("⚡ All-in → SD");return{gs:doShowdown(s,ps),room:r};}s.allInShow=true;s.log.push("⚡ All-in公開");return{gs:s,room:r};}
@@ -358,6 +358,7 @@ export default function Scarney(){
           const wn=(gs.results&&gs.results.w&&gs.results.w[p.id])||0;
           const isActor=isBetting&&gs.betting.actorId===p.id;
           const pBet=isBetting?(gs.betting.bets[p.id]||0):0;
+          const pAllIn=isBetting&&gs.betting.allIn&&gs.betting.allIn[p.id];
           const isBtn2=gs.btn===players.indexOf(p);
           const pChips=(room.chips&&room.chips[p.id])||0;
           const canSee=isSD||showHands;
@@ -371,7 +372,8 @@ export default function Scarney(){
               </div>
               <span style={{fontSize:9,fontWeight:700,color:pChips===0?"#c04040":"#7aba7e"}}>{pChips.toLocaleString()}</span>
             </div>
-            {pBet>0&&<div style={{fontSize:8,color:"#d4af37",textAlign:"center",marginBottom:2}}>BET {pBet.toLocaleString()}</div>}
+            {pAllIn&&<div style={{fontSize:8,color:"#c0392b",textAlign:"center",marginBottom:2,fontWeight:700}}>ALL-IN {pBet>0?pBet.toLocaleString():""}</div>}
+            {!pAllIn&&pBet>0&&<div style={{fontSize:8,color:"#d4af37",textAlign:"center",marginBottom:2}}>BET {pBet.toLocaleString()}</div>}
             <div style={{display:"flex",gap:2,justifyContent:"center",flexWrap:"wrap"}}>
               {fd?<div style={{fontSize:8,color:"#444",padding:"4px 0"}}>FOLD</div>
               :canSee?hd.map((c,i)=><span key={i}>{crd(c,{mini:true,dim:dn})}</span>)
@@ -454,27 +456,32 @@ export default function Scarney(){
         {gs.betting.currentBet===0?<>
           <div style={{display:"flex",gap:6,marginBottom:8}}>
             <button onClick={()=>onBetAct("check")} style={{flex:1,padding:"10px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CHECK ✓</button>
+            <button onClick={()=>onBetAct("bet",myChips)} style={{padding:"10px 16px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
             <button onClick={()=>onBetAct("fold")} style={{padding:"10px 16px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
           </div>
           <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",justifyContent:"center"}}>
             {[100,200,500,1000,2000].filter(v=>v<=myChips).map(v=><button key={v} onClick={()=>setBetAmt(v)} style={{padding:"4px 10px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.04)",color:betAmt===v?"#0a0a0a":"#888",border:"none",cursor:"pointer"}}>{v>=1000?(v/1000)+"K":v}</button>)}
             {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),100))} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
-            <button onClick={()=>setBetAmt(myChips)} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(200,50,50,0.2)",color:"#c04040",border:"none",cursor:"pointer"}}>ALL</button>
           </div>
           <div style={{display:"flex",gap:6}}>
             <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
             <button onClick={()=>onBetAct("bet",Math.min(betAmt,myChips))} style={{padding:"8px 22px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>BET</button>
           </div>
+        </>:toCall>=myChips?<>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"12px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.4)",letterSpacing:1}}>ALL-IN {myChips.toLocaleString()}</button>
+            <button onClick={()=>onBetAct("fold")} style={{padding:"12px 18px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
+          </div>
         </>:<>
           <div style={{display:"flex",gap:6,marginBottom:8}}>
-            <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"10px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CALL {Math.min(toCall,myChips).toLocaleString()}</button>
+            <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"10px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CALL {toCall.toLocaleString()}</button>
+            <button onClick={()=>onBetAct("raise",myChips+myBetIn)} style={{padding:"10px 16px",borderRadius:8,background:"linear-gradient(145deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(192,57,43,0.3)"}}>ALL-IN {myChips.toLocaleString()}</button>
             <button onClick={()=>onBetAct("fold")} style={{padding:"10px 16px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
           </div>
           <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",justifyContent:"center"}}>
             <button onClick={()=>setBetAmt(minRaise)} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>MIN</button>
             {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),minRaise))} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
             {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(gs.pot,minRaise))} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>POT</button>}
-            <button onClick={()=>setBetAmt(maxBet)} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(200,50,50,0.2)",color:"#c04040",border:"none",cursor:"pointer"}}>ALL</button>
           </div>
           <div style={{display:"flex",gap:6}}>
             <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
