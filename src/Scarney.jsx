@@ -242,15 +242,34 @@ export default function Scarney(){
   /* ═══════ AUTO-ADVANCE PHASES ═══════ */
   useEffect(()=>{
     if(!canAdv||!gs||!cardsReady)return;
-    autoAdvRef.current=setTimeout(()=>{onAdvance();},500);
+    autoAdvRef.current=setTimeout(async()=>{
+      const r=roomRef.current;if(!r||!r.gameState||r.gameState.betting)return;
+      const d=dc(r);const g=doAdvancePhase(r.gameState,r.players,d.chips);
+      if(g.phase==="showdown")playWinSound();
+      d.gameState=g;await upd(d.code||code,d);
+    },500);
     return()=>{if(autoAdvRef.current)clearTimeout(autoAdvRef.current);};
   },[canAdv,gs?.phase,cardsReady]);
   /* Auto next round after showdown */
   useEffect(()=>{
     if(!isDlr||!gs||!isSD||!gs.results)return;
-    const t=setTimeout(()=>{onNext();},3000);
+    const t=setTimeout(async()=>{
+      const r=roomRef.current;if(!r||!r.gameState||!r.gameState.results)return;
+      const d=dc(r);const w=d.gameState.results.w;
+      d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});
+      if(d.resetStack){d.players.forEach(p=>{d.chips[p.id]=d.stack||MATCH_STACK;});}
+      else if(d.rebuy){d.players.forEach(p=>{if((d.chips[p.id]||0)===0)d.chips[p.id]=d.stack||10000;});}
+      const activePlayers=d.players.filter(p=>(d.chips[p.id]||0)>0);
+      if(!d.rebuy&&!d.resetStack&&activePlayers.length<=1){
+        d.gameState=null;d.winner=activePlayers.length===1?activePlayers[0]:null;
+        await upd(d.code||code,d);return;
+      }
+      const nb=((d.gameState.btn||0)+1)%activePlayers.length;
+      d.gameState=makeGame(activePlayers,(d.gameState.round||1)+1,nb,d.chips,d.ante||ANTE);
+      playCardFlip(3);setRevealCount(0);await upd(d.code||code,d);
+    },3000);
     return()=>clearTimeout(t);
-  },[isSD,gs?.results]);
+  },[isSD,gs?.round]);
   const sub=useCallback(c=>{if(unR.current)unR.current();unR.current=subscribeRoom(c,d=>setRS(dc(d)));},[]);
   useEffect(()=>{let x=false;(async()=>{const s=getSession();if(!s)return;const d=await getRoom(s.room);if(x)return;if(d&&d.players&&d.players.find(p=>p.id===s.id)){setCode(s.room);setRS(dc(d));setScr(d.gameState?"game":"lobby");sub(s.room);}})();return()=>{x=true;};},[sub]);
   const upd=useCallback(async(c,d,s)=>{const cp=dc(d);setRS(cp);roomRef.current=cp;if(s)setScr(s);await setRoom(c,cp);},[]);
