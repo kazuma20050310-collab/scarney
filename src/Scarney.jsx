@@ -444,12 +444,12 @@ export default function Scarney(){
             {pAllIn&&<div style={{fontSize:7,color:"#ff4444",fontWeight:800,textShadow:"0 0 6px rgba(255,0,0,0.3)"}}>ALL-IN</div>}
             {!pAllIn&&pBet>0&&<div style={{fontSize:7,color:"#f0d060",fontWeight:700}}>{pBet.toLocaleString()}</div>}
           </div>
-          {/* Cards */}
+          {/* Cards — single card with count when hidden */}
           <div style={{display:"flex",gap:1,justifyContent:"center",flexWrap:"wrap",marginTop:2}}>
             {fd?<div style={{fontSize:7,color:"#444"}}>FOLD</div>
-            :canSee?hd.map((c,i)=><span key={i}>{crd(c,{mini:true,dim:dn})}</span>)
-            :Array(hd.length).fill(null).map((_,i)=><span key={i}>{crd(null,{faceDown:true,mini:true})}</span>)}
-            {canSee&&!fd&&dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,mini:true})}</span>)}
+            :canSee?<>{hd.map((c,i)=><span key={i}>{crd(c,{mini:true,dim:dn})}</span>)}{dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,mini:true})}</span>)}</>
+            :hd.length>0?<div style={{width:28,height:40,borderRadius:5,background:"linear-gradient(145deg,#1a472e,#0a2818)",border:"1.5px solid #2a6a3e",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}><span style={{fontSize:16,fontWeight:900,color:"#4a9a62"}}>{hd.length}</span></div>
+            :null}
           </div>
           {/* Showdown result */}
           {canSee&&!fd&&!dn&&pEval&&pEval.rank>=0&&<div style={{fontSize:8,color:"#e8e4d9",marginTop:2,padding:"2px 4px",borderRadius:4,background:wn>0?"rgba(255,215,0,0.15)":"rgba(0,0,0,0.3)",fontWeight:700,textShadow:"0 1px 2px rgba(0,0,0,0.5)"}}>{pEval.name}<br/><span style={{color:"#64b4ff"}}>{pLow}pt</span>{wn>0&&<span style={{color:"#ffd700"}}> +{wn.toLocaleString()}</span>}</div>}
