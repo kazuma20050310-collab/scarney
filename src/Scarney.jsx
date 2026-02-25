@@ -24,7 +24,6 @@ function uid(){return Math.random().toString(36).slice(2,10);}
 function rcode(){const ch="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let r="";for(let i=0;i<4;i++)r+=ch[0|Math.random()*ch.length];return r;}
 function dc(o){return JSON.parse(JSON.stringify(o));}
 
-/* ═══════ HAND EVAL ═══════ */
 function combos(a,k){if(!k)return[[]];if(a.length<k)return[];const[f,...r]=a;return[...combos(r,k-1).map(c=>[f,...c]),...combos(r,k)];}
 function eval5(cards){
   const v=cards.map(c=>RV[c.rank]).sort((a,b)=>a-b);
@@ -46,7 +45,6 @@ function eval5(cards){
 }
 function evalHand(cards){if(!cards||cards.length<5)return{rank:-1,name:"—",score:-1};let b=null;for(const c of combos(cards,5)){const e=eval5(c);if(!b||e.score>b.score)b=e;}return b;}
 
-/* ═══════ GAME LOGIC ═══════ */
 function aliveIds(gs,ps){return ps.filter(p=>!gs.folded[p.id]&&!gs.down[p.id]).map(p=>p.id);}
 function findFirstActor(ps,btnIdx,gs){const n=ps.length;for(let i=1;i<=n;i++){const p=ps[(btnIdx+i)%n];if(!gs.folded[p.id]&&!gs.down[p.id])return p.id;}return null;}
 function findNextActor(ps,curId,gs){const ids=ps.map(p=>p.id);const ci=ids.indexOf(curId);const n=ids.length;for(let i=1;i<n;i++){const id=ids[(ci+i)%n];if(gs.folded[id]||gs.down[id])continue;if(!gs.betting.acted[id]||(gs.betting.bets[id]||0)<gs.betting.currentBet)return id;}return null;}
@@ -54,16 +52,13 @@ function allAliveAllIn(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<
 function startBetting(gs,ps,chips){const alive=aliveIds(gs,ps);if(alive.length<=1)return null;if(allAliveAllIn(gs,ps,chips))return null;const fid=findFirstActor(ps,gs.btn,gs);if(!fid)return null;return{currentBet:0,bets:{},acted:{},actorId:fid,minRaise:10};}
 
 function makeGame(ps,round,btn,chips){
-  const deck=makeDeck();
-  const hands={},disc={},down={},reason={},folded={};
-  let pot=0;const log=[];
+  const deck=makeDeck();const hands={},disc={},down={},reason={},folded={};let pot=0;const log=[];
   ps.forEach(p=>{hands[p.id]=deck.splice(0,6);disc[p.id]=[];down[p.id]=false;reason[p.id]="";folded[p.id]=false;
-    const ante=Math.min(ANTE,chips[p.id]||0);chips[p.id]=(chips[p.id]||0)-ante;pot+=ante;});
-  log.push("R"+(round||1)+": ディール完了 — BTN: "+ps[btn||0].name);
-  log.push("💰 ボムポット: 全員 "+ANTE+" アンティ → POT "+pot);
+    const ante=Math.min(ANTE,chips[p.id]||0);chips[p.id]-=ante;pot+=ante;});
+  log.push("R"+(round||1)+" — BTN: "+ps[btn||0].name);
+  log.push("💰 ボムポット "+ANTE+" × "+ps.length+" → "+pot);
   return{deck,hands,disc,down,reason,folded,top:Array(6).fill(null),bot:Array(6).fill(null),phase:"deal",pot,round:round||1,btn:btn||0,betting:null,results:null,allInShow:false,log};
 }
-
 function openCards(gs,ps){
   const s=dc(gs);const n=s.phase==="deal"?3:s.phase==="flop"?2:s.phase==="turn"?1:0;if(!n)return s;
   const tI=s.top.filter(Boolean).length,bI=s.bot.filter(Boolean).length;const nr=new Set();
@@ -74,56 +69,53 @@ function openCards(gs,ps){
   for(const p of ps){if(s.folded[p.id]||s.down[p.id])continue;const kept=[],toss=[];
     for(const c of(s.hands[p.id]||[]))nr.has(c.rank)?toss.push(c):kept.push(c);
     s.hands[p.id]=kept;s.disc[p.id]=[...(s.disc[p.id]||[]),...toss];
-    s.log.push(p.name+": "+(toss.length?toss.map(c=>c.rank+c.suit).join(" ")+" 捨て":"捨てなし")+"（残"+kept.length+"枚）");}
+    s.log.push(p.name+": "+(toss.length?toss.map(c=>c.rank+c.suit).join(" ")+"捨て":"—")+"(残"+kept.length+")");}
   if(next==="river"){for(const p of ps){if(s.folded[p.id]||s.down[p.id])continue;const hl=(s.hands[p.id]||[]).length;
-    if(hl===0){s.down[p.id]=true;s.reason[p.id]="0枚";s.log.push("💀 "+p.name+" バースト（0枚）");}
-    else if(hl===6){s.down[p.id]=true;s.reason[p.id]="6枚";s.log.push("💀 "+p.name+" バースト（6枚）");}}}
+    if(hl===0){s.down[p.id]=true;s.reason[p.id]="0枚";s.log.push("💀"+p.name+" バースト(0枚)");}
+    else if(hl===6){s.down[p.id]=true;s.reason[p.id]="6枚";s.log.push("💀"+p.name+" バースト(6枚)");}}}
   s.phase=next;return s;
 }
-
 function doAdvancePhase(gs,ps,chips){
   let s=openCards(gs,ps);const alive=aliveIds(s,ps);
   if(alive.length<=1)return doShowdown(s,ps);
   const bet=startBetting(s,ps,chips);
-  if(bet){s.betting=bet;s.log.push("🎲 ベッティング開始 → "+((ps.find(p=>p.id===bet.actorId)||{}).name||"?"));return s;}
-  if(s.phase==="river"){s.log.push("⚡ 全員オールイン → ショーダウン");return doShowdown(s,ps);}
-  s.allInShow=true;s.log.push("⚡ 全員オールイン → ハンド公開");return s;
+  if(bet){s.betting=bet;s.log.push("🎲 "+((ps.find(p=>p.id===bet.actorId)||{}).name||"?"));return s;}
+  if(s.phase==="river"){s.log.push("⚡ All-in → SD");return doShowdown(s,ps);}
+  s.allInShow=true;s.log.push("⚡ All-in公開");return s;
 }
-
 function doBetAction(gs,room,ps,pid,action,amount){
   const s=dc(gs),r=dc(room);const pn=(ps.find(p=>p.id===pid)||{}).name||"?";const chips=r.chips;
-  if(action==="check"){s.betting.acted[pid]=true;s.log.push(pn+": チェック ✓");}
-  else if(action==="fold"){s.folded[pid]=true;s.log.push(pn+": フォールド ✕");}
-  else if(action==="bet"){const amt=Math.min(amount,chips[pid]||0);s.betting.bets[pid]=amt;s.betting.currentBet=amt;s.betting.minRaise=amt;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=amt;s.pot+=amt;s.log.push(pn+": ベット "+amt+(chips[pid]===0?" (All-in)":""));}
-  else if(action==="call"){const owed=Math.min(s.betting.currentBet-(s.betting.bets[pid]||0),chips[pid]||0);s.betting.bets[pid]=(s.betting.bets[pid]||0)+owed;s.betting.acted[pid]=true;chips[pid]-=owed;s.pot+=owed;s.log.push(pn+": コール "+owed+(chips[pid]===0?" (All-in)":""));}
-  else if(action==="raise"){const already=s.betting.bets[pid]||0;const total=Math.min(amount,already+(chips[pid]||0));const pay=total-already;s.betting.minRaise=Math.max(total-s.betting.currentBet,s.betting.minRaise);s.betting.bets[pid]=total;s.betting.currentBet=total;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=pay;s.pot+=pay;s.log.push(pn+": レイズ → "+total+(chips[pid]===0?" (All-in)":""));}
+  if(action==="check"){s.betting.acted[pid]=true;s.log.push(pn+": チェック");}
+  else if(action==="fold"){s.folded[pid]=true;s.log.push(pn+": フォールド");}
+  else if(action==="bet"){const amt=Math.min(amount,chips[pid]||0);s.betting.bets[pid]=amt;s.betting.currentBet=amt;s.betting.minRaise=amt;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=amt;s.pot+=amt;s.log.push(pn+": Bet "+amt+(chips[pid]===0?" AI":""));}
+  else if(action==="call"){const owed=Math.min(s.betting.currentBet-(s.betting.bets[pid]||0),chips[pid]||0);s.betting.bets[pid]=(s.betting.bets[pid]||0)+owed;s.betting.acted[pid]=true;chips[pid]-=owed;s.pot+=owed;s.log.push(pn+": Call "+owed+(chips[pid]===0?" AI":""));}
+  else if(action==="raise"){const already=s.betting.bets[pid]||0;const total=Math.min(amount,already+(chips[pid]||0));const pay=total-already;s.betting.minRaise=Math.max(total-s.betting.currentBet,s.betting.minRaise);s.betting.bets[pid]=total;s.betting.currentBet=total;aliveIds(s,ps).forEach(id=>{s.betting.acted[id]=false;});s.betting.acted[pid]=true;chips[pid]-=pay;s.pot+=pay;s.log.push(pn+": Raise "+total+(chips[pid]===0?" AI":""));}
   const alive=aliveIds(s,ps);
   if(alive.length<=1){s.betting=null;return{gs:doShowdown(s,ps),room:r};}
-  if(allAliveAllIn(s,ps,chips)){s.betting=null;s.allInShow=true;s.log.push("⚡ 全員オールイン → ハンド公開");return{gs:s,room:r};}
+  if(allAliveAllIn(s,ps,chips)){s.betting=null;s.allInShow=true;s.log.push("⚡ All-in公開");return{gs:s,room:r};}
   const ni=findNextActor(ps,pid,s);
   if(ni){s.betting.actorId=ni;return{gs:s,room:r};}
-  s.betting=null;s.log.push("ベッティング終了");
+  s.betting=null;s.log.push("Betting終了");
   if(s.phase==="river"){return{gs:doShowdown(s,ps),room:r};}
   const ng=doAdvancePhase(s,ps,chips);return{gs:ng,room:r};
 }
-
 function doShowdown(gs,ps){
-  const s=dc(gs);s.phase="showdown";s.betting=null;s.log.push("── ショーダウン ──");
+  const s=dc(gs);s.phase="showdown";s.betting=null;s.log.push("── SHOWDOWN ──");
   const tc=(s.top||[]).filter(Boolean);const ids=ps.map(p=>p.id);const hi={},lw={};
-  ids.forEach(id=>{if(s.folded[id]||s.down[id]){hi[id]={rank:-1,name:s.folded[id]?"フォールド":"バースト",score:-1};lw[id]=Infinity;}
+  ids.forEach(id=>{if(s.folded[id]||s.down[id]){hi[id]={rank:-1,name:s.folded[id]?"Fold":"Bust",score:-1};lw[id]=Infinity;}
     else{const h=s.hands[id]||[];hi[id]=evalHand([...h,...tc]);lw[id]=h.length?lowPts(h):Infinity;}});
   const act=ids.filter(id=>!s.folded[id]&&!s.down[id]);const w={};ids.forEach(id=>w[id]=0);
-  if(!act.length){const busted=ids.filter(id=>s.down[id]&&!s.folded[id]);if(busted.length){const sh=Math.floor(s.pot/busted.length);busted.forEach(id=>w[id]=sh);s.log.push("全員バースト → バースト者で折半");}else{const sh=Math.floor(s.pot/ids.length);ids.forEach(id=>w[id]=sh);s.log.push("全員アウト → 返還");}}
-  else if(act.length===1){w[act[0]]=s.pot;s.log.push("🏆 "+((ps.find(p=>p.id===act[0])||{}).name||"?")+" → "+s.pot+"チップ！");}
+  if(!act.length){const busted=ids.filter(id=>s.down[id]&&!s.folded[id]);if(busted.length){const sh=Math.floor(s.pot/busted.length);busted.forEach(id=>w[id]=sh);s.log.push("全員バースト→折半");}else{const sh=Math.floor(s.pot/ids.length);ids.forEach(id=>w[id]=sh);s.log.push("返還");}}
+  else if(act.length===1){w[act[0]]=s.pot;s.log.push("🏆"+((ps.find(p=>p.id===act[0])||{}).name||"?")+" +"+s.pot);}
   else{const mH=Math.max(...act.map(id=>hi[id].score));const hW=act.find(id=>hi[id].score===mH);
     const mL=Math.min(...act.map(id=>lw[id]));const lW=mL===Infinity?hW:act.find(id=>lw[id]===mL);
     const half=Math.floor(s.pot/2),rem=s.pot-half*2;w[hW]+=half+rem;w[lW]+=half;
-    s.log.push("🏆 ハイ: "+((ps.find(p=>p.id===hW)||{}).name||"?")+"（"+hi[hW].name+"）→ "+(half+rem));
-    s.log.push("🏆 ロー: "+((ps.find(p=>p.id===lW)||{}).name||"?")+"（"+(mL===Infinity?"—":mL+"pt")+"）→ "+half);}
+    s.log.push("🏆Hi: "+((ps.find(p=>p.id===hW)||{}).name||"?")+" "+hi[hW].name+" +"+(half+rem));
+    s.log.push("🏆Lo: "+((ps.find(p=>p.id===lW)||{}).name||"?")+" "+(mL===Infinity?"—":mL+"pt")+" +"+half);}
   s.results={hi,lw,w};return s;
 }
 
-/* ═══════ MAIN COMPONENT ═══════ */
+/* ═══════ COMPONENT ═══════ */
 export default function Scarney(){
   const[myId]=useState(()=>{const s=getSession();return s?s.id:uid();});
   const[scr,setScr]=useState("home");
@@ -157,348 +149,287 @@ export default function Scarney(){
   useEffect(()=>{let x=false;(async()=>{const s=getSession();if(!s)return;const d=await getRoom(s.room);if(x)return;if(d&&d.players&&d.players.find(p=>p.id===s.id)){setCode(s.room);setRS(dc(d));setScr(d.gameState?"game":"lobby");sub(s.room);}})();return()=>{x=true;};},[sub]);
   const upd=useCallback(async(c,d,s)=>{const cp=dc(d);setRS(cp);if(s)setScr(s);await setRoom(c,cp);},[]);
 
-  /* ═══════ MATCHMAKING ═══════ */
-  const onMatchSearch=async()=>{
-    if(!name.trim()){setErr("名前を入力");return;}setErr("");
-    const ok=await joinQueue(myId,name.trim());
-    if(!ok){setErr("マッチング登録失敗");return;}
-    setScr("matching");setSearchTime(0);
-    // Poll for match every 2 seconds
+  const onMatchSearch=async()=>{if(!name.trim()){setErr("名前を入力");return;}setErr("");await joinQueue(myId,name.trim());setScr("matching");setSearchTime(0);
     if(matchRef.current)clearInterval(matchRef.current);
-    matchRef.current=setInterval(async()=>{
-      setSearchTime(t=>t+2);
-      const cnt=await getQueueCount();setQueueCount(cnt);
-      const res=await tryMatch(myId);
-      if(res.matched){
-        clearInterval(matchRef.current);matchRef.current=null;
-        const rc=res.roomCode;
-        if(res.isCreator){
-          // I found the match, create the room
-          const d={code:rc,players:[{id:myId,name:name.trim()},res.opponent],dealerId:myId,
-            chips:{[myId]:MATCH_STACK,[res.opponent.id]:MATCH_STACK},gameState:null,stack:MATCH_STACK};
-          setCode(rc);saveSession(myId,name.trim(),rc);await upd(rc,d,"lobby");sub(rc);
-        }else{
-          // Other player created the room, just join
-          // Wait a moment for room to be created
-          let attempts=0;
-          const joinInterval=setInterval(async()=>{
-            attempts++;
-            const d=await getRoom(rc);
-            if(d&&d.players){
-              clearInterval(joinInterval);
-              if(!d.players.find(p=>p.id===myId)){
-                d.players.push({id:myId,name:name.trim()});
-                d.chips[myId]=MATCH_STACK;
-                await setRoom(rc,d);
-              }
-              setCode(rc);saveSession(myId,name.trim(),rc);setRS(dc(d));setScr("lobby");sub(rc);
-            }
-            if(attempts>15)clearInterval(joinInterval);
-          },1000);
-        }
-      }
-    },2000);
-  };
+    matchRef.current=setInterval(async()=>{setSearchTime(t=>t+2);const cnt=await getQueueCount();setQueueCount(cnt);
+      const res=await tryMatch(myId);if(res.matched){clearInterval(matchRef.current);matchRef.current=null;const rc=res.roomCode;
+        if(res.isCreator){const d={code:rc,players:[{id:myId,name:name.trim()},res.opponent],dealerId:myId,chips:{[myId]:MATCH_STACK,[res.opponent.id]:MATCH_STACK},gameState:null,stack:MATCH_STACK};setCode(rc);saveSession(myId,name.trim(),rc);await upd(rc,d,"lobby");sub(rc);}
+        else{let at=0;const ji2=setInterval(async()=>{at++;const d=await getRoom(rc);if(d&&d.players){clearInterval(ji2);if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=MATCH_STACK;await setRoom(rc,d);}setCode(rc);saveSession(myId,name.trim(),rc);setRS(dc(d));setScr("lobby");sub(rc);}if(at>15)clearInterval(ji2);},1000);}}},2000);};
+  const onCancelMatch=async()=>{if(matchRef.current){clearInterval(matchRef.current);matchRef.current=null;}await leaveQueue(myId);setScr("home");setSearchTime(0);};
 
-  const onCancelMatch=async()=>{
-    if(matchRef.current){clearInterval(matchRef.current);matchRef.current=null;}
-    await leaveQueue(myId);
-    setScr("home");setSearchTime(0);
-  };
-
-  /* ═══════ ROOM ACTIONS ═══════ */
-  const onCreate=async()=>{
-    if(!name.trim()){setErr("名前を入力");return;}setErr("");
-    const c=rcode();
-    const d={code:c,players:[{id:myId,name:name.trim()}],dealerId:myId,chips:{[myId]:stack},gameState:null,stack};
-    setCode(c);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);
-  };
-  const onJoin=async()=>{
-    if(!name.trim()){setErr("名前を入力");return;}if(!ji.trim()){setErr("コードを入力");return;}setErr("");
-    const c=ji.trim().toUpperCase();const d=await getRoom(c);
-    if(!d||!d.players){setErr("ルーム見つかりません");return;}
-    if(d.gameState&&d.gameState.phase!=="showdown"&&!d.players.find(p=>p.id===myId)){setErr("ゲーム進行中");return;}
-    if(d.players.length>=6&&!d.players.find(p=>p.id===myId)){setErr("満員");return;}
-    if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=d.stack||10000;}
-    setCode(c);setStack(d.stack||10000);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);
-  };
-  const onStart=async()=>{
-    if(!room||room.players.length<2)return;
-    const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips);await upd(code,d,"game");
-  };
-  const onAdvance=async()=>{
-    if(!room||!gs||isBetting)return;
-    const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);d.gameState=g;await upd(code,d);
-  };
-  const onBetAct=async(action,amount)=>{
-    if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;
-    const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;await upd(code,nr);
-  };
-  const onNext=async()=>{
-    if(!room||!gs||!gs.results)return;
-    const d=dc(room);const w=d.gameState.results.w;
-    d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});
-    const nb=((d.gameState.btn||0)+1)%d.players.length;
-    d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);await upd(code,d);
-  };
+  const onCreate=async()=>{if(!name.trim()){setErr("名前を入力");return;}setErr("");const c=rcode();const d={code:c,players:[{id:myId,name:name.trim()}],dealerId:myId,chips:{[myId]:stack},gameState:null,stack};setCode(c);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
+  const onJoin=async()=>{if(!name.trim()){setErr("名前を入力");return;}if(!ji.trim()){setErr("コードを入力");return;}setErr("");const c=ji.trim().toUpperCase();const d=await getRoom(c);if(!d||!d.players){setErr("ルーム見つかりません");return;}if(d.gameState&&d.gameState.phase!=="showdown"&&!d.players.find(p=>p.id===myId)){setErr("ゲーム進行中");return;}if(d.players.length>=6&&!d.players.find(p=>p.id===myId)){setErr("満員");return;}if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=d.stack||10000;}setCode(c);setStack(d.stack||10000);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
+  const onStart=async()=>{if(!room||room.players.length<2)return;const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips);await upd(code,d,"game");};
+  const onAdvance=async()=>{if(!room||!gs||isBetting)return;const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);d.gameState=g;await upd(code,d);};
+  const onBetAct=async(action,amount)=>{if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;await upd(code,nr);};
+  const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});const nb=((d.gameState.btn||0)+1)%d.players.length;d.gameState=makeGame(d.players,(d.gameState.round||1)+1,nb,d.chips);await upd(code,d);};
   const onRebuy=async()=>{if(!room)return;const d=dc(room);d.chips[myId]=(d.chips[myId]||0)+(d.stack||10000);await upd(code,d);};
   const onSetStack=async v=>{setStack(v);if(room&&isDlr){const d=dc(room);d.stack=v;d.players.forEach(p=>d.chips[p.id]=v);await upd(code,d);}};
-  const onLeave=async()=>{
-    try{if(unR.current){unR.current();unR.current=null;}
-    if(room){const d=dc(room);d.players=d.players.filter(p=>p.id!==myId);if(!d.players.length)await deleteRoom(code);else{if(d.dealerId===myId&&d.players.length)d.dealerId=d.players[0].id;await setRoom(code,d);}}
-    clearSession();}catch(e){}setScr("home");setRS(null);setCode("");setErr("");
-  };
+  const onLeave=async()=>{try{if(unR.current){unR.current();unR.current=null;}if(room){const d=dc(room);d.players=d.players.filter(p=>p.id!==myId);if(!d.players.length)await deleteRoom(code);else{if(d.dealerId===myId&&d.players.length)d.dealerId=d.players[0].id;await setRoom(code,d);}}clearSession();}catch(e){}setScr("home");setRS(null);setCode("");setErr("");};
 
-  /* ═══════ RENDER ═══════ */
+  /* ═══════ CARD RENDER ═══════ */
   const crd=(card,o={})=>{
-    const{faceDown,small,discarded,glow,dim}=o;
-    const w=small?38:50,h=small?54:74,fs=small?9:13;
-    if(faceDown)return<div style={{width:w,height:h,borderRadius:6,background:"linear-gradient(135deg,#1a5c2e,#0d3318)",border:"2px solid #2a7a42",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:12,opacity:0.3,color:"#4a9a62"}}>🂠</span></div>;
-    if(!card)return<div style={{width:w,height:h,borderRadius:6,border:"2px dashed rgba(255,255,255,0.06)",flexShrink:0}}/>;
+    const{faceDown,small,mini,discarded,glow,dim}=o;
+    const w=mini?28:small?36:48,h=mini?40:small?52:70,fs=mini?7:small?9:12;
+    if(faceDown)return<div style={{width:w,height:h,borderRadius:5,background:"linear-gradient(145deg,#1a472e,#0a2818)",border:"1.5px solid #2a6a3e",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}><span style={{fontSize:fs,opacity:0.2,color:"#4a9a62"}}>♠</span></div>;
+    if(!card)return<div style={{width:w,height:h,borderRadius:5,border:"1.5px dashed rgba(255,255,255,0.05)",flexShrink:0}}/>;
     const rd=isRed(card);
-    return<div style={{width:w,height:h,borderRadius:6,background:discarded?"#181828":"#fffef8",border:glow?"2px solid #ffd700":discarded?"2px solid #c0392b":"2px solid #bbb",display:"flex",flexDirection:"column",justifyContent:"space-between",padding:small?"2px 3px":"3px 5px",color:discarded?"#555":rd?"#c0392b":"#1a1a2e",fontSize:fs,fontWeight:700,fontFamily:"Georgia,serif",position:"relative",flexShrink:0,opacity:discarded?0.4:dim?0.3:1,boxShadow:glow?"0 0 8px rgba(255,215,0,0.4)":"0 1px 3px rgba(0,0,0,0.2)"}}>
+    return<div style={{width:w,height:h,borderRadius:5,background:discarded?"#12121e":"linear-gradient(145deg,#fefef6,#eeeade)",border:glow?"2px solid #ffd700":discarded?"1.5px solid #8b2020":"1.5px solid #999",display:"flex",flexDirection:"column",justifyContent:"space-between",padding:mini?"1px 2px":small?"2px 3px":"3px 5px",color:discarded?"#444":rd?"#c0392b":"#1a1a2e",fontSize:fs,fontWeight:700,fontFamily:"Georgia,serif",position:"relative",flexShrink:0,opacity:discarded?0.35:dim?0.25:1,boxShadow:glow?"0 0 12px rgba(255,215,0,0.5)":"0 2px 6px rgba(0,0,0,0.3)",transition:"transform 0.15s"}}>
       <div>{card.rank}{card.suit}</div><div style={{textAlign:"right",transform:"rotate(180deg)"}}>{card.rank}{card.suit}</div>
-      {discarded&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:small?12:18,color:"#c0392b"}}>✕</div>}
+      {discarded&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:mini?8:small?10:14,color:"#c0392b"}}>✕</div>}
     </div>;
   };
-  const abtn=(t,fn,bg,dk,dis,fl)=><button onClick={fn} disabled={dis} style={{padding:"10px 20px",borderRadius:8,width:fl?"100%":"auto",background:dis?"#333":bg||"#444",color:dk?"#111":"#fff",border:"none",cursor:dis?"default":"pointer",fontWeight:700,fontSize:14,opacity:dis?0.5:1,fontFamily:"inherit"}}>{t}</button>;
-  const CS={minHeight:"100vh",background:"linear-gradient(160deg,#080c0a,#0d1f15,#080e0a)",color:"#e8e4d9",fontFamily:"'Segoe UI','Hiragino Sans','Noto Sans JP',sans-serif",padding:10};
-  const TT={fontSize:24,fontWeight:900,textAlign:"center",background:"linear-gradient(90deg,#d4af37,#f5e07a,#d4af37)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:3,margin:"0 0 4px"};
+
+  const BG={minHeight:"100vh",background:"radial-gradient(ellipse at 50% 30%,#0a1a10,#050d08 60%,#020604)",color:"#e8e4d9",fontFamily:"'Segoe UI','Hiragino Sans','Noto Sans JP',sans-serif"};
+  const TT={fontSize:22,fontWeight:900,textAlign:"center",background:"linear-gradient(90deg,#c9a227,#f5e07a,#c9a227)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:4};
+  const goldBtn=(t,fn,dis,fl)=><button onClick={fn} disabled={dis} style={{padding:"10px 24px",borderRadius:8,width:fl?"100%":"auto",background:dis?"#222":"linear-gradient(145deg,#d4af37,#b8962e)",color:dis?"#555":"#0a0a0a",border:"none",cursor:dis?"default":"pointer",fontWeight:800,fontSize:14,opacity:dis?0.4:1,fontFamily:"inherit",boxShadow:dis?"none":"0 2px 8px rgba(212,175,55,0.3)",letterSpacing:1}}>{t}</button>;
+  const darkBtn=(t,fn,bg)=><button onClick={fn} style={{padding:"10px 24px",borderRadius:8,background:bg||"rgba(255,255,255,0.06)",color:"#ccc",border:"1px solid rgba(255,255,255,0.08)",cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit"}}>{t}</button>;
 
   /* ═══════ HOME ═══════ */
-  if(scr==="home")return<div style={CS}><div style={{maxWidth:400,margin:"0 auto",padding:"30px 16px"}}>
-    <h1 style={TT}>♠ SCARNEY ♣</h1>
-    <p style={{textAlign:"center",color:"#6a8a6e",fontSize:12,marginBottom:20}}>スカーニーポーカー</p>
-    <div style={{fontSize:11,color:"#8aaa8e",marginBottom:3,fontWeight:600}}>あなたの名前</div>
-    <input value={name} onChange={e=>{setName(e.target.value);setErr("");}} placeholder="名前" maxLength={10} style={{width:"100%",padding:"9px 11px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
-    <div style={{height:12}}/>
-
-    {/* MATCHMAKING BUTTON */}
-    <button onClick={onMatchSearch} style={{width:"100%",padding:"14px 20px",borderRadius:10,background:"linear-gradient(135deg,#e74c3c,#c0392b)",color:"#fff",border:"none",fontWeight:900,fontSize:16,cursor:"pointer",fontFamily:"inherit",letterSpacing:1,boxShadow:"0 4px 15px rgba(231,76,60,0.3)"}}>
-      🔍 マッチを探す
+  if(scr==="home")return<div style={BG}><div style={{maxWidth:380,margin:"0 auto",padding:"40px 16px"}}>
+    <h1 style={{...TT,fontSize:28,marginBottom:2}}>♠ SCARNEY ♣</h1>
+    <p style={{textAlign:"center",color:"#4a6a4e",fontSize:11,marginBottom:24,letterSpacing:2}}>POKER LOUNGE</p>
+    <div style={{fontSize:11,color:"#7a9a7e",marginBottom:4,fontWeight:600}}>PLAYER NAME</div>
+    <input value={name} onChange={e=>{setName(e.target.value);setErr("");}} placeholder="名前を入力" maxLength={10} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid rgba(212,175,55,0.2)",background:"rgba(255,255,255,0.04)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
+    <div style={{height:14}}/>
+    <button onClick={onMatchSearch} style={{width:"100%",padding:"16px",borderRadius:10,background:"linear-gradient(135deg,#c0392b,#96281b)",color:"#fff",border:"none",fontWeight:900,fontSize:17,cursor:"pointer",fontFamily:"inherit",letterSpacing:2,boxShadow:"0 4px 20px rgba(192,57,43,0.4)",textTransform:"uppercase"}}>
+      🔍 FIND MATCH
     </button>
-    <div style={{textAlign:"center",fontSize:9,color:"#666",marginTop:4}}>スタック: {MATCH_STACK.toLocaleString()} 固定</div>
-
-    <div style={{display:"flex",alignItems:"center",gap:10,margin:"16px 0"}}><div style={{flex:1,height:1,background:"rgba(255,255,255,0.08)"}}/><span style={{color:"#444",fontSize:11}}>フレンド対戦</span><div style={{flex:1,height:1,background:"rgba(255,255,255,0.08)"}}/></div>
-
-    <div style={{fontSize:11,color:"#8aaa8e",marginBottom:3,fontWeight:600}}>スタック</div>
-    <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>
-      {STACKS.map(v=><button key={v} onClick={()=>setStack(v)} style={{padding:"5px 12px",borderRadius:6,fontSize:13,fontWeight:700,fontFamily:"inherit",background:stack===v?"#d4af37":"rgba(255,255,255,0.06)",color:stack===v?"#111":"#aaa",border:stack===v?"2px solid #d4af37":"2px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>{v.toLocaleString()}</button>)}
+    <div style={{textAlign:"center",fontSize:9,color:"#555",marginTop:4}}>Stack: {MATCH_STACK.toLocaleString()} fixed</div>
+    <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0"}}><div style={{flex:1,height:1,background:"rgba(212,175,55,0.12)"}}/><span style={{color:"#4a6a4e",fontSize:10,letterSpacing:2}}>PRIVATE</span><div style={{flex:1,height:1,background:"rgba(212,175,55,0.12)"}}/></div>
+    <div style={{fontSize:10,color:"#7a9a7e",marginBottom:4,fontWeight:600}}>STACK</div>
+    <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
+      {STACKS.map(v=><button key={v} onClick={()=>setStack(v)} style={{padding:"5px 12px",borderRadius:6,fontSize:12,fontWeight:700,fontFamily:"inherit",background:stack===v?"linear-gradient(145deg,#d4af37,#b8962e)":"rgba(255,255,255,0.04)",color:stack===v?"#0a0a0a":"#777",border:stack===v?"none":"1px solid rgba(255,255,255,0.06)",cursor:"pointer"}}>{v.toLocaleString()}</button>)}
     </div>
-    {abtn("ルームを作成",onCreate,"#2a7a42",false,false,true)}
-    <div style={{height:8}}/>
-    <div style={{fontSize:11,color:"#8aaa8e",marginBottom:3,fontWeight:600}}>ルームコード</div>
-    <input value={ji} onChange={e=>{setJi(e.target.value.toUpperCase());setErr("");}} placeholder="AB3X" maxLength={4} style={{width:"100%",padding:"9px 11px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#e8e4d9",fontSize:22,fontWeight:900,fontFamily:"inherit",boxSizing:"border-box",outline:"none",textAlign:"center",letterSpacing:10}}/>
+    {goldBtn("CREATE ROOM",onCreate,false,true)}
+    <div style={{height:10}}/>
+    <div style={{fontSize:10,color:"#7a9a7e",marginBottom:4,fontWeight:600}}>ROOM CODE</div>
+    <input value={ji} onChange={e=>{setJi(e.target.value.toUpperCase());setErr("");}} placeholder="AB3X" maxLength={4} style={{width:"100%",padding:"10px",borderRadius:8,border:"1px solid rgba(212,175,55,0.2)",background:"rgba(255,255,255,0.04)",color:"#d4af37",fontSize:24,fontWeight:900,fontFamily:"monospace",boxSizing:"border-box",outline:"none",textAlign:"center",letterSpacing:12}}/>
     <div style={{height:6}}/>
-    {abtn("参加する",onJoin,"#4a6a8a",false,false,true)}
-    {err&&<div style={{marginTop:10,padding:"7px 10px",borderRadius:6,background:"rgba(180,40,40,0.1)",border:"1px solid rgba(180,40,40,0.2)",color:"#e74c3c",fontSize:12,textAlign:"center"}}>{err}</div>}
-    <div style={{marginTop:18,padding:10,borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)",fontSize:10,color:"#5a7a5e",lineHeight:1.8}}>
-      <strong style={{color:"#7a9a7e"}}>📖 ルール</strong><br/>
-      ボムポット: ディール時に全員{ANTE}アンティ。<br/>
-      各ストリートで下段と同じ数字の手札を強制ディスカード。<br/>
-      <span style={{color:"#e74c3c"}}>💀 リバー時点で手札 0枚 or 6枚 → バースト。</span><br/>
-      フロップ/ターン/リバーでベッティング。ハイ＋ローでポット折半。
+    {darkBtn("JOIN",onJoin,"rgba(74,106,138,0.3)")}
+    {err&&<div style={{marginTop:10,padding:"8px",borderRadius:6,background:"rgba(180,40,40,0.12)",border:"1px solid rgba(180,40,40,0.25)",color:"#e74c3c",fontSize:12,textAlign:"center"}}>{err}</div>}
+    <div style={{marginTop:20,padding:10,borderRadius:8,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.03)",fontSize:9,color:"#3a5a3e",lineHeight:1.9}}>
+      <strong style={{color:"#5a7a5e"}}>📖 RULES</strong><br/>
+      Bomb Pot: {ANTE} ante per player. Discard matching ranks each street.<br/>
+      <span style={{color:"#c04040"}}>💀 River: 0 or 6 cards = BUST</span><br/>
+      Hi (best hand) + Lo (lowest pts) split the pot.
     </div>
   </div></div>;
 
   /* ═══════ MATCHING ═══════ */
-  if(scr==="matching")return<div style={CS}><div style={{maxWidth:400,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}>
+  if(scr==="matching")return<div style={BG}><div style={{maxWidth:380,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}>
     <h1 style={TT}>♠ SCARNEY ♣</h1>
-    <div style={{marginTop:40,marginBottom:30}}>
-      <div style={{fontSize:40,marginBottom:16,animation:"pulse 1.5s ease-in-out infinite"}}>🔍</div>
-      <div style={{fontSize:18,fontWeight:700,color:"#d4af37",marginBottom:8}}>対戦相手を探しています…</div>
-      <div style={{fontSize:13,color:"#999",marginBottom:4}}>{name} として検索中</div>
-      <div style={{fontSize:22,fontWeight:900,color:"#e8e4d9",fontFamily:"monospace"}}>{Math.floor(searchTime/60)}:{String(searchTime%60).padStart(2,"0")}</div>
-      <div style={{fontSize:11,color:"#666",marginTop:8}}>待機中のプレイヤー: {queueCount}人</div>
+    <div style={{marginTop:50}}>
+      <div style={{width:80,height:80,margin:"0 auto 20px",borderRadius:"50%",border:"3px solid #c0392b",display:"flex",alignItems:"center",justifyContent:"center",animation:"spin 2s linear infinite"}}>
+        <span style={{fontSize:30}}>🔍</span>
+      </div>
+      <div style={{fontSize:16,fontWeight:700,color:"#d4af37",marginBottom:6,letterSpacing:1}}>SEARCHING...</div>
+      <div style={{fontSize:12,color:"#888"}}>{name}</div>
+      <div style={{fontSize:28,fontWeight:900,color:"#e8e4d9",fontFamily:"monospace",margin:"12px 0"}}>{Math.floor(searchTime/60)}:{String(searchTime%60).padStart(2,"0")}</div>
+      <div style={{fontSize:10,color:"#555"}}>Waiting: {queueCount}</div>
     </div>
-    <button onClick={onCancelMatch} style={{padding:"12px 40px",borderRadius:8,background:"#5a3333",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
-    <style>{`@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}`}</style>
+    <div style={{marginTop:30}}>{darkBtn("CANCEL",onCancelMatch,"rgba(90,51,51,0.5)")}</div>
+    <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
   </div></div>;
 
   /* ═══════ LOBBY ═══════ */
   if(scr==="lobby"){
     const ps=room?room.players||[]:[];const cs=room?room.stack||stack:stack;
-    return<div style={CS}><div style={{maxWidth:400,margin:"0 auto",padding:"24px 16px"}}>
+    return<div style={BG}><div style={{maxWidth:380,margin:"0 auto",padding:"30px 16px"}}>
       <h1 style={TT}>♠ SCARNEY ♣</h1>
-      <div style={{textAlign:"center",margin:"12px 0"}}>
-        <div style={{fontSize:10,color:"#777"}}>ルームコード</div>
-        <div style={{fontSize:36,fontWeight:900,letterSpacing:12,color:"#d4af37",fontFamily:"monospace"}}>{code}</div>
-        <div style={{fontSize:10,color:"#555"}}>友達にシェア！</div>
+      <div style={{textAlign:"center",margin:"16px 0"}}>
+        <div style={{fontSize:9,color:"#666",letterSpacing:2}}>ROOM CODE</div>
+        <div style={{fontSize:40,fontWeight:900,letterSpacing:14,color:"#d4af37",fontFamily:"monospace",textShadow:"0 0 20px rgba(212,175,55,0.2)"}}>{code}</div>
       </div>
-      <div style={{textAlign:"center",margin:"10px 0",padding:"8px 12px",borderRadius:8,background:"rgba(212,175,55,0.08)",border:"1px solid rgba(212,175,55,0.2)"}}>
-        <div style={{fontSize:11,color:"#d4af37",fontWeight:600,marginBottom:5}}>🪙 スタック: {cs.toLocaleString()}</div>
-        {isDlr&&!room.gameState&&<div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
-          {STACKS.map(v=><button key={v} onClick={()=>onSetStack(v)} style={{padding:"3px 10px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"inherit",background:cs===v?"#d4af37":"rgba(255,255,255,0.05)",color:cs===v?"#111":"#777",border:cs===v?"2px solid #d4af37":"2px solid rgba(255,255,255,0.06)",cursor:"pointer"}}>{v.toLocaleString()}</button>)}
+      <div style={{textAlign:"center",margin:"10px 0",padding:"8px",borderRadius:8,background:"rgba(212,175,55,0.06)",border:"1px solid rgba(212,175,55,0.15)"}}>
+        <div style={{fontSize:11,color:"#d4af37",fontWeight:600}}>🪙 {cs.toLocaleString()}</div>
+        {isDlr&&!room.gameState&&<div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap",marginTop:5}}>
+          {STACKS.map(v=><button key={v} onClick={()=>onSetStack(v)} style={{padding:"3px 10px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"inherit",background:cs===v?"#d4af37":"rgba(255,255,255,0.04)",color:cs===v?"#0a0a0a":"#666",border:"none",cursor:"pointer"}}>{v.toLocaleString()}</button>)}
         </div>}
       </div>
-      <div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:12,border:"1px solid rgba(255,255,255,0.05)",marginBottom:12}}>
-        <div style={{fontSize:12,color:"#aaa",marginBottom:6,fontWeight:600}}>👥 ({ps.length}/6)</div>
-        {ps.map((p,i)=><div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:i<ps.length-1?"1px solid rgba(255,255,255,0.04)":"none"}}>
-          <span style={{fontSize:15}}>{p.id===room.dealerId?"👑":"🎮"}</span>
-          <span style={{fontSize:13,fontWeight:p.id===myId?700:400,color:p.id===myId?"#d4af37":"#ccc"}}>{p.name}{p.id===myId?" (あなた)":""}</span>
+      <div style={{background:"rgba(255,255,255,0.02)",borderRadius:10,padding:12,border:"1px solid rgba(255,255,255,0.04)",margin:"12px 0"}}>
+        {ps.map((p,i)=><div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<ps.length-1?"1px solid rgba(255,255,255,0.03)":"none"}}>
+          <div style={{width:32,height:32,borderRadius:"50%",background:p.id===myId?"linear-gradient(135deg,#d4af37,#b8962e)":"linear-gradient(135deg,#2a4a3a,#1a3a2a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:p.id===myId?"#0a0a0a":"#6a8a6e"}}>{p.name[0]}</div>
+          <div><div style={{fontSize:13,fontWeight:p.id===myId?700:400,color:p.id===myId?"#d4af37":"#ccc"}}>{p.name}</div>
+            <div style={{fontSize:9,color:"#555"}}>{p.id===room.dealerId?"HOST":""}</div></div>
         </div>)}
-        {ps.length<2&&<div style={{fontSize:11,color:"#666",marginTop:6,textAlign:"center"}}>あと{2-ps.length}人で開始</div>}
+        {ps.length<2&&<div style={{fontSize:11,color:"#555",textAlign:"center",padding:"8px 0"}}>Waiting for players...</div>}
       </div>
-      {isDlr?abtn("ゲーム開始 ▶",onStart,"#d4af37",true,ps.length<2,true):<div style={{textAlign:"center",padding:10,color:"#777",fontSize:13}}>待機中…</div>}
-      <div style={{height:8}}/>
-      {abtn("退出",onLeave,"#5a3333",false,false,true)}
+      {isDlr?goldBtn("START GAME ▶",onStart,ps.length<2,true):<div style={{textAlign:"center",padding:12,color:"#666",fontSize:12}}>Waiting for host...</div>}
+      <div style={{height:10}}/>
+      <div style={{textAlign:"center"}}>{darkBtn("LEAVE",onLeave,"rgba(90,51,51,0.3)")}</div>
     </div></div>;
   }
 
   /* ═══════ GAME ═══════ */
-  if(!gs||!room)return<div style={CS}><p style={{padding:40,textAlign:"center",color:"#888"}}>読み込み中...</p></div>;
+  if(!gs||!room)return<div style={BG}><p style={{padding:60,textAlign:"center",color:"#555"}}>Loading...</p></div>;
   const players=room.players||[];const others=players.filter(p=>p.id!==myId);
   const myDisc=(gs.disc&&gs.disc[myId])||[];const myDn=(gs.down&&gs.down[myId])||false;const myFold=(gs.folded&&gs.folded[myId])||false;
   const canAdv=isDlr&&!isBetting&&!isSD;
-  const actorName=isBetting?(players.find(p=>p.id===gs.betting.actorId)||{}).name||"?":"";
   const myBetIn=isBetting?(gs.betting.bets[myId]||0):0;
   const toCall=isBetting?Math.max(0,gs.betting.currentBet-myBetIn):0;
   const minRaise=isBetting?(gs.betting.currentBet===0?100:gs.betting.currentBet+(gs.betting.minRaise||100)):100;
   const maxBet=myChips+myBetIn;
   const needRebuy=myChips===0&&gs.phase==="deal";
 
-  return<div style={CS}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-      <div>
-        <div style={{fontSize:14,fontWeight:900,background:"linear-gradient(90deg,#d4af37,#f5e07a,#d4af37)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:2}}>♠ SCARNEY ♣</div>
-        <div style={{fontSize:9,color:"#6a8a6e"}}>R{gs.round} ・ {code} ・ BTN: {(players[gs.btn]||{}).name||"?"}</div>
+  return<div style={{...BG,padding:"6px 8px",display:"flex",flexDirection:"column",minHeight:"100vh"}}>
+    {/* Top bar */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 4px 8px"}}>
+      <div style={{fontSize:12,fontWeight:900,background:"linear-gradient(90deg,#c9a227,#f5e07a)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:2}}>♠ SCARNEY</div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{fontSize:8,color:"#555"}}>R{gs.round}・{code}</div>
+        <div style={{background:myChips===0?"rgba(200,40,40,0.15)":"rgba(144,238,144,0.1)",border:myChips===0?"1px solid rgba(200,40,40,0.3)":"1px solid rgba(144,238,144,0.2)",borderRadius:8,padding:"4px 10px"}}>
+          <span style={{fontSize:8,color:myChips===0?"#c04040":"#5a8a5e",fontWeight:600}}>STACK </span>
+          <span style={{fontSize:14,fontWeight:900,color:myChips===0?"#e74c3c":"#90ee90",fontFamily:"Georgia"}}>{myChips.toLocaleString()}</span>
+        </div>
       </div>
-      <div style={{background:myChips===0?"linear-gradient(135deg,rgba(231,76,60,0.2),rgba(231,76,60,0.05))":"linear-gradient(135deg,rgba(144,238,144,0.15),rgba(144,238,144,0.05))",border:myChips===0?"1px solid rgba(231,76,60,0.4)":"1px solid rgba(144,238,144,0.3)",borderRadius:10,padding:"6px 14px",textAlign:"center"}}>
-        <div style={{fontSize:8,color:myChips===0?"#e74c3c":"#6aaa6e",fontWeight:600,letterSpacing:1}}>MY STACK</div>
-        <div style={{fontSize:22,fontWeight:900,color:myChips===0?"#e74c3c":"#90ee90",fontFamily:"Georgia,serif"}}>{myChips.toLocaleString()}</div>
-      </div>
     </div>
-    <div style={{textAlign:"center",padding:"6px 0",marginBottom:5,background:"radial-gradient(ellipse at center,rgba(212,175,55,0.1) 0%,transparent 70%)",borderRadius:10}}>
-      <div style={{fontSize:9,color:"#b8962e",fontWeight:600,letterSpacing:1}}>POT</div>
-      <div style={{fontSize:26,fontWeight:900,color:"#f0d060",fontFamily:"Georgia,serif",textShadow:"0 0 16px rgba(212,175,55,0.25)"}}>{gs.pot.toLocaleString()}</div>
-    </div>
-    <div style={{display:"flex",gap:2,marginBottom:6}}>
-      {PH_LIST.map(p=>{const on=PH_LIST.indexOf(gs.phase)>=PH_LIST.indexOf(p);return<div key={p} style={{flex:1,textAlign:"center"}}>
-        <div style={{height:3,borderRadius:2,marginBottom:1,background:on?"#d4af37":"rgba(255,255,255,0.04)"}}/>
-        <div style={{fontSize:7,color:on?"#d4af37":"#333",fontWeight:600}}>{PH_JP[p]}</div>
-      </div>;})}
-    </div>
-    {isBetting&&<div style={{textAlign:"center",padding:"5px 8px",marginBottom:5,borderRadius:8,background:isMyTurn?"rgba(255,215,0,0.1)":"rgba(255,255,255,0.03)",border:isMyTurn?"1px solid rgba(255,215,0,0.3)":"1px solid rgba(255,255,255,0.05)",fontSize:11}}>
-      {isMyTurn?<span style={{color:"#ffd700",fontWeight:700}}>🎲 あなたのターン！</span>:<span style={{color:"#999"}}>⏳ {actorName} のアクション待ち…</span>}
-      {gs.betting.currentBet>0&&<span style={{color:"#d4af37",marginLeft:8,fontSize:10}}>現在ベット: {gs.betting.currentBet.toLocaleString()}</span>}
-    </div>}
-    {showHands&&!isSD&&<div style={{textAlign:"center",padding:"5px 8px",marginBottom:5,borderRadius:8,background:"rgba(100,180,255,0.08)",border:"1px solid rgba(100,180,255,0.2)",fontSize:11,color:"#64b4ff",fontWeight:700}}>⚡ 全員オールイン — ハンド公開中</div>}
 
-    {/* Others */}
-    <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
-      {others.map(p=>{
-        const dn=gs.down&&gs.down[p.id];const fd=gs.folded&&gs.folded[p.id];
-        const hd=(gs.hands&&gs.hands[p.id])||[];const dsc=(gs.disc&&gs.disc[p.id])||[];
-        const wn=(gs.results&&gs.results.w&&gs.results.w[p.id])||0;
-        const isActor=isBetting&&gs.betting.actorId===p.id;
-        const pBet=isBetting?(gs.betting.bets[p.id]||0):0;
-        const isBtn2=gs.btn===players.indexOf(p);
-        const pChips=(room.chips&&room.chips[p.id])||0;
-        const canSee=isSD||showHands;
-        const pLow=hd.length>0?lowPts(hd):0;
-        const pEval=canSee&&hd.length>0&&topCards.length>0?evalHand([...hd,...topCards]):null;
-        return<div key={p.id} style={{flex:1,minWidth:110,background:fd?"rgba(100,100,100,0.06)":dn?"rgba(180,40,40,0.06)":isActor?"rgba(255,215,0,0.05)":"rgba(255,255,255,0.02)",borderRadius:8,padding:"4px 5px",border:isActor?"1px solid rgba(255,215,0,0.3)":dn?"1px solid rgba(180,40,40,0.15)":"1px solid rgba(255,255,255,0.04)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-            <span style={{fontSize:9,fontWeight:700}}>{isBtn2?"🔘":""}{p.name}{dn?"💀":fd?"✕":""}</span>
-            <span style={{fontSize:10,fontWeight:700,color:pChips===0?"#e74c3c":"#90ee90"}}>🪙{pChips.toLocaleString()}</span>
+    {/* ═══════ TABLE ═══════ */}
+    <div style={{flex:1,display:"flex",flexDirection:"column",gap:4}}>
+
+      {/* Opponents around table */}
+      <div style={{display:"flex",justifyContent:"center",gap:6,flexWrap:"wrap",padding:"0 4px"}}>
+        {others.map(p=>{
+          const dn=gs.down&&gs.down[p.id];const fd=gs.folded&&gs.folded[p.id];
+          const hd=(gs.hands&&gs.hands[p.id])||[];const dsc=(gs.disc&&gs.disc[p.id])||[];
+          const wn=(gs.results&&gs.results.w&&gs.results.w[p.id])||0;
+          const isActor=isBetting&&gs.betting.actorId===p.id;
+          const pBet=isBetting?(gs.betting.bets[p.id]||0):0;
+          const isBtn2=gs.btn===players.indexOf(p);
+          const pChips=(room.chips&&room.chips[p.id])||0;
+          const canSee=isSD||showHands;
+          const pLow=hd.length>0?lowPts(hd):0;
+          const pEval=canSee&&hd.length>0&&topCards.length>0?evalHand([...hd,...topCards]):null;
+          return<div key={p.id} style={{background:isActor?"rgba(255,215,0,0.08)":"rgba(0,0,0,0.25)",borderRadius:10,padding:"6px 8px",border:isActor?"1.5px solid rgba(255,215,0,0.4)":fd?"1px solid rgba(100,100,100,0.2)":"1px solid rgba(255,255,255,0.05)",minWidth:100,flex:"1 1 100px",maxWidth:180,backdropFilter:"blur(4px)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:fd?"#333":dn?"#5a2020":"linear-gradient(135deg,#2a4a3a,#1a3a2a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#8aaa8e",border:isBtn2?"2px solid #d4af37":"none"}}>{p.name[0]}</div>
+                <span style={{fontSize:9,fontWeight:700,color:fd?"#555":dn?"#c04040":"#ccc"}}>{p.name}{dn?"💀":fd?"✕":""}</span>
+              </div>
+              <span style={{fontSize:9,fontWeight:700,color:pChips===0?"#c04040":"#7aba7e"}}>{pChips.toLocaleString()}</span>
+            </div>
+            {pBet>0&&<div style={{fontSize:8,color:"#d4af37",textAlign:"center",marginBottom:2}}>BET {pBet.toLocaleString()}</div>}
+            <div style={{display:"flex",gap:2,justifyContent:"center",flexWrap:"wrap"}}>
+              {fd?<div style={{fontSize:8,color:"#444",padding:"4px 0"}}>FOLD</div>
+              :canSee?hd.map((c,i)=><span key={i}>{crd(c,{mini:true,dim:dn})}</span>)
+              :Array(hd.length).fill(null).map((_,i)=><span key={i}>{crd(null,{faceDown:true,mini:true})}</span>)}
+              {canSee&&!fd&&dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,mini:true})}</span>)}
+            </div>
+            {canSee&&!fd&&!dn&&pEval&&pEval.rank>=0&&<div style={{fontSize:7,color:"#aaa",textAlign:"center",marginTop:2}}>{pEval.name}・<span style={{color:"#64b4ff"}}>{pLow}pt</span>{wn>0&&<strong style={{color:"#ffd700"}}> +{wn.toLocaleString()}</strong>}</div>}
+          </div>;
+        })}
+      </div>
+
+      {/* Green felt table */}
+      <div style={{background:"radial-gradient(ellipse at 50% 50%,#1a5a32,#0f4025 50%,#0a3018 80%,#061a0e)",borderRadius:20,padding:"12px 10px",border:"3px solid #2a6a3e",boxShadow:"inset 0 0 30px rgba(0,0,0,0.5),0 0 20px rgba(10,48,24,0.5)",position:"relative",minHeight:140}}>
+
+        {/* Phase indicator */}
+        <div style={{display:"flex",gap:3,marginBottom:8,justifyContent:"center"}}>
+          {PH_LIST.map(p=>{const on=PH_LIST.indexOf(gs.phase)>=PH_LIST.indexOf(p);return<div key={p} style={{padding:"2px 8px",borderRadius:10,fontSize:8,fontWeight:700,background:on?"rgba(212,175,55,0.2)":"rgba(0,0,0,0.2)",color:on?"#d4af37":"#2a4a3a",border:on?"1px solid rgba(212,175,55,0.3)":"1px solid rgba(0,0,0,0.2)"}}>{PH_JP[p]}</div>;})}
+        </div>
+
+        {/* POT */}
+        <div style={{textAlign:"center",marginBottom:8}}>
+          <span style={{background:"rgba(0,0,0,0.3)",padding:"4px 16px",borderRadius:20,fontSize:10,color:"#b8962e",fontWeight:700,letterSpacing:1}}>
+            POT <span style={{fontSize:16,color:"#f0d060",fontFamily:"Georgia"}}>{gs.pot.toLocaleString()}</span>
+          </span>
+        </div>
+
+        {/* Betting indicator */}
+        {(isBetting||showHands&&!isSD)&&<div style={{textAlign:"center",marginBottom:6}}>
+          {isBetting&&(isMyTurn?<span style={{background:"rgba(255,215,0,0.15)",padding:"3px 12px",borderRadius:10,fontSize:10,color:"#ffd700",fontWeight:700,border:"1px solid rgba(255,215,0,0.3)"}}>YOUR TURN{gs.betting.currentBet>0?" • Bet: "+gs.betting.currentBet.toLocaleString():""}</span>
+          :<span style={{background:"rgba(0,0,0,0.3)",padding:"3px 12px",borderRadius:10,fontSize:10,color:"#888"}}>⏳ {(players.find(p=>p.id===gs.betting.actorId)||{}).name||"?"}</span>)}
+          {showHands&&!isSD&&!isBetting&&<span style={{background:"rgba(100,180,255,0.1)",padding:"3px 12px",borderRadius:10,fontSize:10,color:"#64b4ff",fontWeight:700,border:"1px solid rgba(100,180,255,0.2)"}}>⚡ ALL-IN SHOWDOWN</span>}
+        </div>}
+
+        {/* Community cards - Top row */}
+        <div style={{textAlign:"center",marginBottom:4}}>
+          <div style={{fontSize:7,color:"rgba(100,180,255,0.4)",fontWeight:600,marginBottom:2,letterSpacing:1}}>COMMUNITY</div>
+          <div style={{display:"flex",gap:3,justifyContent:"center"}}>{(gs.top||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}</div>
+        </div>
+        {/* Bottom row */}
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:7,color:"rgba(255,80,80,0.4)",fontWeight:600,marginBottom:2,letterSpacing:1}}>DISCARD</div>
+          <div style={{display:"flex",gap:3,justifyContent:"center"}}>{(gs.bot||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}</div>
+        </div>
+
+        {/* Dealer controls on table */}
+        <div style={{display:"flex",gap:6,justifyContent:"center",marginTop:8}}>
+          {canAdv&&gs.phase==="deal"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>FLOP ▶</button>}
+          {canAdv&&gs.phase==="flop"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>TURN ▶</button>}
+          {canAdv&&gs.phase==="turn"&&<button onClick={onAdvance} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>RIVER ▶</button>}
+          {isDlr&&isSD&&<button onClick={onNext} style={{padding:"6px 20px",borderRadius:20,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(212,175,55,0.3)"}}>NEXT ROUND ▶</button>}
+        </div>
+      </div>
+
+      {/* ═══════ MY SEAT ═══════ */}
+      <div style={{background:myDn?"rgba(120,20,20,0.15)":myFold?"rgba(50,50,50,0.15)":"rgba(0,0,0,0.3)",borderRadius:14,padding:"8px 10px",border:isMyTurn?"2px solid rgba(255,215,0,0.5)":myDn?"1px solid rgba(120,20,20,0.3)":"1px solid rgba(255,255,255,0.05)",backdropFilter:"blur(4px)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#d4af37,#b8962e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#0a0a0a",border:gs.btn===players.findIndex(p=>p.id===myId)?"2px solid #fff":"none"}}>{name[0]||"?"}</div>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:"#d4af37"}}>{name} <span style={{fontSize:8,color:"#666"}}>({myH.length})</span>{myDn?<span style={{color:"#c04040",fontSize:9}}> 💀{gs.reason&&gs.reason[myId]}</span>:myFold?<span style={{color:"#555",fontSize:9}}> FOLD</span>:""}</div>
+              {myH.length>0&&!myDn&&!myFold&&<div style={{fontSize:9,color:"#64b4ff"}}>Low: {myLow}pt{liveEval&&liveEval.rank>=0&&<span style={{marginLeft:6,color:"#aaa"}}>• {liveEval.name}</span>}</div>}
+            </div>
           </div>
-          {pBet>0&&<div style={{fontSize:8,color:"#d4af37",marginBottom:2}}>ベット: {pBet.toLocaleString()}</div>}
-          <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
-            {fd?<div style={{fontSize:9,color:"#666",padding:"8px 0"}}>フォールド</div>
-            :canSee?hd.map((c,i)=><span key={i}>{crd(c,{small:true,dim:dn})}</span>)
-            :Array(hd.length).fill(null).map((_,i)=><span key={i}>{crd(null,{faceDown:true,small:true,dim:dn})}</span>)}
-            {canSee&&!fd&&dsc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true,small:true})}</span>)}
+          {gs.btn===players.findIndex(p=>p.id===myId)&&<span style={{fontSize:8,background:"#d4af37",color:"#0a0a0a",padding:"1px 6px",borderRadius:4,fontWeight:800}}>BTN</span>}
+        </div>
+        <div style={{display:"flex",gap:3,justifyContent:"center",flexWrap:"wrap",minHeight:70}}>
+          {myFold?<div style={{fontSize:12,color:"#444",padding:"20px 0"}}>FOLDED</div>
+          :<>{myH.map((c,i)=><span key={i}>{crd(c,{glow:isSD&&!myDn})}</span>)}{myDisc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true})}</span>)}</>}
+        </div>
+        {isSD&&gs.results&&!myDn&&!myFold&&<div style={{textAlign:"center",marginTop:4,padding:"4px 10px",borderRadius:8,background:((gs.results.w&&gs.results.w[myId])||0)>0?"rgba(255,215,0,0.1)":"rgba(255,255,255,0.02)",fontSize:11}}>
+          🏆 <strong>{gs.results.hi&&gs.results.hi[myId]?gs.results.hi[myId].name:"?"}</strong> ・ {myLow}pt
+          {((gs.results.w&&gs.results.w[myId])||0)>0&&<span style={{color:"#ffd700",fontWeight:700,marginLeft:6}}>+{(gs.results.w[myId]||0).toLocaleString()}</span>}
+        </div>}
+      </div>
+
+      {/* Rebuy */}
+      {needRebuy&&<div style={{textAlign:"center",padding:10,background:"rgba(200,40,40,0.08)",borderRadius:10,border:"1px solid rgba(200,40,40,0.2)"}}>
+        <div style={{fontSize:12,color:"#c04040",fontWeight:700,marginBottom:6}}>💸 BUSTED</div>
+        <button onClick={onRebuy} style={{padding:"8px 24px",borderRadius:8,background:"#c0392b",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>REBUY +{(room.stack||10000).toLocaleString()} 🔄</button>
+      </div>}
+
+      {/* ═══════ BETTING UI ═══════ */}
+      {isMyTurn&&!myDn&&!myFold&&<div style={{background:"rgba(0,0,0,0.35)",borderRadius:12,padding:10,border:"1px solid rgba(255,215,0,0.15)"}}>
+        {gs.betting.currentBet===0?<>
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            <button onClick={()=>onBetAct("check")} style={{flex:1,padding:"10px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CHECK ✓</button>
+            <button onClick={()=>onBetAct("fold")} style={{padding:"10px 16px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
           </div>
-          {canSee&&!fd&&!dn&&pEval&&pEval.rank>=0&&<div style={{marginTop:2,fontSize:8,color:"#bbb"}}>{pEval.name} ・ <span style={{color:"#64b4ff"}}>{pLow}pt</span>{wn>0&&<strong style={{color:"#ffd700",marginLeft:3}}>+{wn.toLocaleString()}</strong>}</div>}
-          {canSee&&!fd&&!dn&&(!pEval||pEval.rank<0)&&hd.length>0&&<div style={{marginTop:2,fontSize:8,color:"#bbb"}}><span style={{color:"#64b4ff"}}>{pLow}pt</span>{wn>0&&<strong style={{color:"#ffd700",marginLeft:3}}>+{wn.toLocaleString()}</strong>}</div>}
-          {dn&&<div style={{fontSize:8,color:"#e74c3c",marginTop:1}}>💀{(gs.reason&&gs.reason[p.id])||""}</div>}
-        </div>;
-      })}
-    </div>
-
-    {/* Board */}
-    <div style={{background:"linear-gradient(135deg,#1a4a2e,#0f3520,#1a4a2e)",borderRadius:12,padding:8,marginBottom:6,border:"2px solid #2a6a42",boxShadow:"inset 0 2px 12px rgba(0,0,0,0.4)"}}>
-      <div style={{fontSize:9,color:"rgba(100,180,255,0.6)",fontWeight:600,marginBottom:2}}>⬆ 上段（役に使用）</div>
-      <div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:5}}>{(gs.top||[]).map((c,i)=><span key={i}>{crd(c)}</span>)}</div>
-      <div style={{height:1,background:"rgba(255,255,255,0.06)",marginBottom:5}}/>
-      <div style={{fontSize:9,color:"rgba(255,80,80,0.6)",fontWeight:600,marginBottom:2}}>⬇ 下段（ディスカード判定）</div>
-      <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{(gs.bot||[]).map((c,i)=><span key={i}>{crd(c)}</span>)}</div>
-    </div>
-
-    {/* My hand */}
-    <div style={{background:myDn?"rgba(180,40,40,0.06)":myFold?"rgba(100,100,100,0.06)":"rgba(255,255,255,0.03)",borderRadius:10,padding:8,marginBottom:6,border:myDn?"1px solid rgba(180,40,40,0.2)":isMyTurn?"2px solid rgba(255,215,0,0.4)":"1px solid rgba(212,175,55,0.18)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-        <span style={{fontSize:11,fontWeight:700}}>🃏 あなた（{myH.length}枚）{gs.btn===players.findIndex(p=>p.id===myId)?" 🔘BTN":""}{myDn?<span style={{color:"#e74c3c",fontSize:10,marginLeft:3}}>💀{(gs.reason&&gs.reason[myId])||""}</span>:myFold?<span style={{color:"#666",fontSize:10,marginLeft:3}}>フォールド</span>:""}</span>
-        {myH.length>0&&!myDn&&!myFold&&<span style={{fontSize:10,color:"#64b4ff",fontWeight:700}}>Low: {myLow}pt</span>}
-      </div>
-      {isBetting&&(gs.betting.bets[myId]||0)>0&&<div style={{fontSize:9,color:"#d4af37",marginBottom:3}}>ベット中: {(gs.betting.bets[myId]||0).toLocaleString()}</div>}
-      <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-        {myFold?<div style={{fontSize:11,color:"#666",padding:"10px 0"}}>フォールド済み</div>
-        :<>{myH.map((c,i)=><span key={i}>{crd(c,{glow:isSD&&!myDn})}</span>)}{myDisc.map((c,i)=><span key={"d"+i}>{crd(c,{discarded:true})}</span>)}</>}
-      </div>
-      {liveEval&&liveEval.rank>=0&&!myDn&&!myFold&&<div style={{marginTop:5,padding:"4px 10px",borderRadius:8,background:"linear-gradient(90deg,rgba(100,180,255,0.08),rgba(100,180,255,0.02))",border:"1px solid rgba(100,180,255,0.15)",fontSize:11}}>
-        🃏 現在の役: <strong style={{color:"#64b4ff"}}>{liveEval.name}</strong>
+          <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",justifyContent:"center"}}>
+            {[100,200,500,1000,2000].filter(v=>v<=myChips).map(v=><button key={v} onClick={()=>setBetAmt(v)} style={{padding:"4px 10px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.04)",color:betAmt===v?"#0a0a0a":"#888",border:"none",cursor:"pointer"}}>{v>=1000?(v/1000)+"K":v}</button>)}
+            {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),100))} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
+            <button onClick={()=>setBetAmt(myChips)} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(200,50,50,0.2)",color:"#c04040",border:"none",cursor:"pointer"}}>ALL</button>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
+            <button onClick={()=>onBetAct("bet",Math.min(betAmt,myChips))} style={{padding:"8px 22px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>BET</button>
+          </div>
+        </>:<>
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"10px",borderRadius:8,background:"linear-gradient(145deg,#2a7a42,#1a5a2e)",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(42,122,66,0.3)"}}>CALL {Math.min(toCall,myChips).toLocaleString()}</button>
+            <button onClick={()=>onBetAct("fold")} style={{padding:"10px 16px",borderRadius:8,background:"rgba(90,51,51,0.5)",color:"#aaa",border:"1px solid rgba(90,51,51,0.5)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>FOLD</button>
+          </div>
+          <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",justifyContent:"center"}}>
+            <button onClick={()=>setBetAmt(minRaise)} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>MIN</button>
+            {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),minRaise))} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>½P</button>}
+            {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(gs.pot,minRaise))} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.04)",color:"#888",border:"none",cursor:"pointer"}}>POT</button>}
+            <button onClick={()=>setBetAmt(maxBet)} style={{padding:"4px 8px",borderRadius:6,fontSize:10,fontWeight:700,fontFamily:"inherit",background:"rgba(200,50,50,0.2)",color:"#c04040",border:"none",cursor:"pointer"}}>ALL</button>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
+            <button onClick={()=>onBetAct("raise",Math.min(Math.max(betAmt,minRaise),maxBet))} disabled={myChips<=toCall} style={{padding:"8px 22px",borderRadius:8,background:"linear-gradient(145deg,#d4af37,#b8962e)",color:"#0a0a0a",border:"none",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",opacity:myChips<=toCall?0.3:1}}>RAISE</button>
+          </div>
+        </>}
       </div>}
-      {isSD&&gs.results&&!myDn&&!myFold&&<div style={{marginTop:4,padding:"3px 8px",borderRadius:6,fontSize:11,background:((gs.results.w&&gs.results.w[myId])||0)>0?"rgba(255,215,0,0.1)":"rgba(255,255,255,0.02)"}}>
-        🏆 <strong>{gs.results.hi&&gs.results.hi[myId]?gs.results.hi[myId].name:"?"}</strong> ・ Low: <strong>{myLow}pt</strong>
-        {((gs.results.w&&gs.results.w[myId])||0)>0&&<span style={{color:"#ffd700",marginLeft:6,fontWeight:700}}>+{(gs.results.w[myId]||0).toLocaleString()}!</span>}
-      </div>}
+
+      {/* Log */}
+      <div ref={logR} style={{background:"rgba(0,0,0,0.3)",borderRadius:8,padding:5,maxHeight:80,overflowY:"auto",fontSize:8,lineHeight:1.6,color:"#4a6a4e"}}>
+        {(gs.log||[]).map((l,i)=><div key={i} style={{color:l.includes("💀")?"#c04040":l.includes("🏆")?"#d4af37":l.startsWith("──")?"#8aaa8e":l.includes("🎲")?"#7aba7e":l.includes("⚡")?"#64b4ff":l.includes("💰")?"#b8962e":"#4a6a4e",fontWeight:l.includes("🏆")||l.includes("💀")?700:400}}>{l}</div>)}
+      </div>
     </div>
-
-    {/* Betting UI */}
-    {isMyTurn&&!myDn&&!myFold&&<div style={{background:"rgba(255,215,0,0.05)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:10,padding:10,marginBottom:6}}>
-      {gs.betting.currentBet===0?<>
-        <div style={{display:"flex",gap:6,marginBottom:8}}>
-          <button onClick={()=>onBetAct("check")} style={{flex:1,padding:"10px",borderRadius:8,background:"#2a7a42",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>チェック ✓</button>
-          <button onClick={()=>onBetAct("fold")} style={{padding:"10px 16px",borderRadius:8,background:"#5a3333",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>フォールド</button>
-        </div>
-        <div style={{fontSize:10,color:"#aaa",marginBottom:4}}>ベット額:</div>
-        <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
-          {[100,200,500,1000,2000].filter(v=>v<=myChips).map(v=><button key={v} onClick={()=>setBetAmt(v)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:betAmt===v?"#d4af37":"rgba(255,255,255,0.06)",color:betAmt===v?"#111":"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>{v.toLocaleString()}</button>)}
-          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),100))} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>½Pot</button>}
-          <button onClick={()=>setBetAmt(myChips)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(200,50,50,0.2)",color:"#e74c3c",border:"1px solid rgba(200,50,50,0.3)",cursor:"pointer"}}>All-in</button>
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
-          <button onClick={()=>onBetAct("bet",Math.min(betAmt,myChips))} disabled={betAmt<=0} style={{padding:"8px 20px",borderRadius:8,background:"#d4af37",color:"#111",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>ベット</button>
-        </div>
-      </>:<>
-        <div style={{display:"flex",gap:6,marginBottom:8}}>
-          <button onClick={()=>onBetAct("call")} style={{flex:1,padding:"10px",borderRadius:8,background:"#2a7a42",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>コール ({Math.min(toCall,myChips).toLocaleString()})</button>
-          <button onClick={()=>onBetAct("fold")} style={{padding:"10px 16px",borderRadius:8,background:"#5a3333",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>フォールド</button>
-        </div>
-        <div style={{fontSize:10,color:"#aaa",marginBottom:4}}>レイズ額（トータル）:</div>
-        <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
-          <button onClick={()=>setBetAmt(minRaise)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>Min({minRaise.toLocaleString()})</button>
-          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(Math.floor(gs.pot/2),minRaise))} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>½Pot</button>}
-          {gs.pot>0&&<button onClick={()=>setBetAmt(Math.max(gs.pot,minRaise))} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(255,255,255,0.06)",color:"#aaa",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>Pot</button>}
-          <button onClick={()=>setBetAmt(maxBet)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",background:"rgba(200,50,50,0.2)",color:"#e74c3c",border:"1px solid rgba(200,50,50,0.3)",cursor:"pointer"}}>All-in</button>
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          <input type="number" value={betAmt} onChange={e=>setBetAmt(Math.max(1,+e.target.value||0))} style={{flex:1,padding:"8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"#e8e4d9",fontSize:15,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
-          <button onClick={()=>onBetAct("raise",Math.min(Math.max(betAmt,minRaise),maxBet))} disabled={myChips<=toCall} style={{padding:"8px 20px",borderRadius:8,background:"#d4af37",color:"#111",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",opacity:myChips<=toCall?0.4:1}}>レイズ</button>
-        </div>
-      </>}
-    </div>}
-
-    {needRebuy&&<div style={{background:"rgba(231,76,60,0.08)",border:"1px solid rgba(231,76,60,0.25)",borderRadius:10,padding:12,marginBottom:6,textAlign:"center"}}>
-      <div style={{fontSize:13,color:"#e74c3c",fontWeight:700,marginBottom:6}}>💸 スタックがなくなりました</div>
-      <button onClick={onRebuy} style={{padding:"10px 30px",borderRadius:8,background:"#e74c3c",color:"#fff",border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>リバイ (+{(room.stack||10000).toLocaleString()}) 🔄</button>
-    </div>}
-
-    <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:6,flexWrap:"wrap"}}>
-      {canAdv&&gs.phase==="deal"&&abtn("フロップ ▶",onAdvance,"#d4af37",true)}
-      {canAdv&&gs.phase==="flop"&&abtn("ターン ▶",onAdvance,"#d4af37",true)}
-      {canAdv&&gs.phase==="turn"&&abtn("リバー ▶",onAdvance,"#d4af37",true)}
-      {isDlr&&isSD&&abtn("次のラウンド ▶",onNext,"#d4af37",true)}
-      {!isDlr&&!isBetting&&!isSD&&gs.phase==="deal"&&<div style={{padding:6,color:"#777",fontSize:11}}>👑 ディーラーがフロップへ…</div>}
-      {!isDlr&&!isBetting&&!isSD&&gs.phase!=="deal"&&gs.phase!=="showdown"&&<div style={{padding:6,color:"#777",fontSize:11}}>👑 ディーラーが次のストリートへ…</div>}
-      {!isDlr&&isSD&&<div style={{padding:6,color:"#777",fontSize:11}}>次のラウンド待ち…</div>}
-    </div>
-
-    <div ref={logR} style={{background:"rgba(0,0,0,0.25)",borderRadius:8,padding:6,maxHeight:120,overflowY:"auto",fontSize:9,lineHeight:1.7,border:"1px solid rgba(255,255,255,0.03)",color:"#7a9a7e",marginBottom:5}}>
-      {(gs.log||[]).map((l,i)=><div key={i} style={{color:l.includes("💀")?"#e74c3c":l.includes("🏆")?"#ffd700":l.startsWith("──")?"#d4af37":l.includes("🎲")?"#90ee90":l.includes("⚡")?"#64b4ff":l.includes("💰")?"#d4af37":l.includes("フォールド")?"#888":"#7a9a7e",fontWeight:l.startsWith("──")||l.includes("🏆")||l.includes("💀")||l.includes("🎲")||l.includes("⚡")||l.includes("💰")?700:400}}>{l}</div>)}
-    </div>
-    <div style={{textAlign:"center"}}><button onClick={onLeave} style={{background:"none",border:"none",color:"#553",fontSize:10,cursor:"pointer",textDecoration:"underline"}}>退出</button></div>
+    <div style={{textAlign:"center",padding:"6px 0"}}><button onClick={onLeave} style={{background:"none",border:"none",color:"#333",fontSize:9,cursor:"pointer"}}>EXIT</button></div>
   </div>;
 }
