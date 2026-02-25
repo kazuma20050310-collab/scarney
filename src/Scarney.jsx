@@ -167,6 +167,9 @@ export default function Scarney(){
   const[betAmt,setBetAmt]=useState(100);
   const[queueCount,setQueueCount]=useState(0);
   const[searchTime,setSearchTime]=useState(0);
+  const[revealCount,setRevealCount]=useState(99);
+  const prevRoundRef=useRef(null);
+  const autoAdvRef=useRef(null);
   const unR=useRef(null);const logR=useRef(null);const matchRef=useRef(null);const roomRef=useRef(null);
   const audioCtx=useRef(null);
   const getAudio=()=>{if(!audioCtx.current)try{audioCtx.current=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}return audioCtx.current;};
@@ -213,10 +216,41 @@ export default function Scarney(){
   const topCards=(gs?(gs.top||[]):[]).filter(Boolean);
   const liveEval=(!isSD&&myH.length>0&&topCards.length>0)?evalHand([...myH,...topCards]):null;
   const myLow=myH.length>0?lowPts(myH):0;
+  const targetCount=gs?(gs.top||[]).filter(Boolean).length:0;
+  const canAdv=gs&&isDlr&&!isBetting&&!isSD;
+  const cardsReady=revealCount>=targetCount;
 
   useEffect(()=>{if(logR.current)logR.current.scrollTop=1e6;});
   useEffect(()=>{if(room&&room.gameState&&scr==="lobby")setScr("game");},[room,scr]);
   useEffect(()=>()=>{if(unR.current)unR.current();if(matchRef.current)clearInterval(matchRef.current);},[]);
+
+  /* ═══════ CARD REVEAL ANIMATION ═══════ */
+  // Reset on new round
+  useEffect(()=>{
+    if(!gs)return;
+    if(prevRoundRef.current===null){prevRoundRef.current=gs.round;setRevealCount(targetCount);return;}
+    if(gs.round!==prevRoundRef.current){prevRoundRef.current=gs.round;setRevealCount(0);}
+  },[gs?.round]);
+  // Animate one card at a time
+  useEffect(()=>{
+    if(revealCount<targetCount){
+      const t=setTimeout(()=>{playCardFlip(1);setRevealCount(r=>r+1);},300);
+      return()=>clearTimeout(t);
+    }
+  },[revealCount,targetCount]);
+
+  /* ═══════ AUTO-ADVANCE PHASES ═══════ */
+  useEffect(()=>{
+    if(!canAdv||!gs||!cardsReady)return;
+    autoAdvRef.current=setTimeout(()=>{onAdvance();},500);
+    return()=>{if(autoAdvRef.current)clearTimeout(autoAdvRef.current);};
+  },[canAdv,gs?.phase,cardsReady]);
+  /* Auto next round after showdown */
+  useEffect(()=>{
+    if(!isDlr||!gs||!isSD||!gs.results)return;
+    const t=setTimeout(()=>{onNext();},3000);
+    return()=>clearTimeout(t);
+  },[isSD,gs?.results]);
   const sub=useCallback(c=>{if(unR.current)unR.current();unR.current=subscribeRoom(c,d=>setRS(dc(d)));},[]);
   useEffect(()=>{let x=false;(async()=>{const s=getSession();if(!s)return;const d=await getRoom(s.room);if(x)return;if(d&&d.players&&d.players.find(p=>p.id===s.id)){setCode(s.room);setRS(dc(d));setScr(d.gameState?"game":"lobby");sub(s.room);}})();return()=>{x=true;};},[sub]);
   const upd=useCallback(async(c,d,s)=>{const cp=dc(d);setRS(cp);roomRef.current=cp;if(s)setScr(s);await setRoom(c,cp);},[]);
@@ -259,7 +293,7 @@ export default function Scarney(){
   const onCreate=async()=>{if(!name.trim()){setErr("名前を入力");return;}setErr("");const c=rcode();const d={code:c,players:[{id:myId,name:name.trim()}],dealerId:myId,chips:{[myId]:stack},gameState:null,stack,resetStack:false,rebuy:true,ante:ANTE};setCode(c);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
   const onJoin=async()=>{if(!name.trim()){setErr("名前を入力");return;}if(!ji.trim()){setErr("コードを入力");return;}setErr("");const c=ji.trim().toUpperCase();const d=await getRoom(c);if(!d||!d.players){setErr("ルーム見つかりません");return;}if(d.gameState&&d.gameState.phase!=="showdown"&&!d.players.find(p=>p.id===myId)){setErr("ゲーム進行中");return;}if(d.players.length>=6&&!d.players.find(p=>p.id===myId)){setErr("満員");return;}if(!d.players.find(p=>p.id===myId)){d.players.push({id:myId,name:name.trim()});d.chips[myId]=d.stack||10000;}setCode(c);setStack(d.stack||10000);saveSession(myId,name.trim(),c);await upd(c,d,"lobby");sub(c);};
   const onStart=async()=>{if(!room||room.players.length<2)return;const d=dc(room);d.gameState=makeGame(d.players,1,0,d.chips,d.ante||ANTE);playCardFlip(3);await upd(code,d,"game");};
-  const onAdvance=async()=>{if(!room||!gs||isBetting)return;const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);const nc=g.phase==="flop"?3:g.phase==="turn"||g.phase==="river"?1:0;if(nc)playCardFlip(nc);if(g.phase==="showdown")playWinSound();d.gameState=g;await upd(code,d);};
+  const onAdvance=async()=>{if(!room||!gs||isBetting)return;const d=dc(room);const g=doAdvancePhase(gs,room.players,d.chips);if(g.phase==="showdown")playWinSound();d.gameState=g;await upd(code,d);};
   const onBetAct=async(action,amount)=>{if(!room||!gs||!isBetting||gs.betting.actorId!==myId)return;if(action!=="fold")playChipSound();const{gs:ng,room:nr}=doBetAction(gs,room,room.players,myId,action,amount);nr.gameState=ng;if(ng.phase==="showdown")playWinSound();await upd(code,nr);};
   const onNext=async()=>{if(!room||!gs||!gs.results)return;const d=dc(room);const w=d.gameState.results.w;
     d.players.forEach(p=>{d.chips[p.id]=(d.chips[p.id]||0)+((w&&w[p.id])||0);});
@@ -431,7 +465,6 @@ export default function Scarney(){
   if(!gs||!room)return<div style={BG}><p style={{padding:60,textAlign:"center",color:"#555"}}>Loading...</p></div>;
   const players=room.players||[];const others=players.filter(p=>p.id!==myId);
   const myDisc=(gs.disc&&gs.disc[myId])||[];const myDn=(gs.down&&gs.down[myId])||false;const myFold=(gs.folded&&gs.folded[myId])||false;
-  const canAdv=isDlr&&!isBetting&&!isSD;
   const myBetIn=isBetting?(gs.betting.bets[myId]||0):0;
   const toCall=isBetting?Math.max(0,gs.betting.currentBet-myBetIn):0;
   const minRaise=isBetting?(gs.betting.currentBet===0?100:gs.betting.currentBet+(gs.betting.minRaise||100)):100;
@@ -503,21 +536,16 @@ export default function Scarney(){
           {showHands&&!isSD&&!isBetting&&<span style={{background:"rgba(100,180,255,0.08)",padding:"3px 10px",borderRadius:10,fontSize:10,color:"#64b4ff",fontWeight:700,border:"1px solid rgba(100,180,255,0.15)"}}>⚡ ALL-IN</span>}
         </div>}
 
-        {/* Community cards */}
+        {/* Community cards — animated reveal */}
         <div style={{display:"flex",gap:3,justifyContent:"center",marginBottom:3}}>
-          {(gs.top||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}
+          {(gs.top||[]).map((c,i)=><span key={i} style={{transition:"transform 0.2s,opacity 0.2s",transform:i<revealCount?"scale(1)":"scale(0.5)",opacity:i<revealCount?1:0}}>{i<revealCount?crd(c,{small:true}):crd(null,{small:true})}</span>)}
         </div>
         <div style={{display:"flex",gap:3,justifyContent:"center"}}>
-          {(gs.bot||[]).map((c,i)=><span key={i}>{crd(c,{small:true})}</span>)}
+          {(gs.bot||[]).map((c,i)=><span key={i} style={{transition:"transform 0.2s,opacity 0.2s",transform:i<revealCount?"scale(1)":"scale(0.5)",opacity:i<revealCount?1:0}}>{i<revealCount?crd(c,{small:true}):crd(null,{small:true})}</span>)}
         </div>
 
         {/* Dealer controls */}
         <div style={{display:"flex",gap:5,justifyContent:"center",marginTop:6,pointerEvents:"auto"}}>
-          {canAdv&&gs.phase==="deal"&&advBtn("FLOP ▶",onAdvance)}
-          {canAdv&&gs.phase==="flop"&&advBtn("TURN ▶",onAdvance)}
-          {canAdv&&gs.phase==="turn"&&advBtn("RIVER ▶",onAdvance)}
-          {isDlr&&!isSD&&!isBetting&&gs.phase==="river"&&advBtn("SHOWDOWN ▶",onAdvance)}
-          {isDlr&&isSD&&advBtn("NEXT ▶",onNext)}
         </div>
       </div>
 
